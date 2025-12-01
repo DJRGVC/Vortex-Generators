@@ -103,9 +103,9 @@
 
 #include <Wire.h>
 #include <EEPROM.h>
-#include "IMU_Sensor.h"
-#include "Pressure_Sensor.h"
-#include "Switch.h"
+#include "../IMU_Sensor.h"
+#include "../Pressure_Sensor.h"
+#include "../Switch.h"
 
 // Motor driver pins
 #define MOTOR_AIN1 6
@@ -125,6 +125,7 @@
 #define EEPROM_MIN_ADDR 4        // Min position (4 bytes for long)
 #define EEPROM_MAX_ADDR 8        // Max position (4 bytes for long)
 #define EEPROM_IMU_OFFSET_ADDR 12 // IMU pitch offset at 0° angle of attack (4 bytes for float)
+#define EEPROM_PRESSURE_BASELINE_ADDR 16 // Baseline pressure for airspeed calc (4 bytes for float)
 #define EEPROM_MAGIC_NUMBER 0xCAFEBABE  // Magic number to verify EEPROM data
 
 // Motor control constants
@@ -143,15 +144,16 @@ volatile long encoderCount = 0;
 long calibrationMin = 0;  // Minimum position (at limit switch)
 long calibrationMax = 0;  // Maximum position (user-defined)
 float imuPitchOffset = 0.0;  // IMU pitch at 0° angle of attack
+float pressureBaseline = 0.0;  // Baseline pressure (no airflow) in hPa
 bool isCalibrated = false;
 
-// IMU pitch mapping for automatic mode
-#define IMU_PITCH_MIN -30.0   // IMU pitch that maps to motor position 0°
-#define IMU_PITCH_MAX 30.0    // IMU pitch that maps to motor position 65°
+// IMU pitch mapping for automatic mode (relative to calibrated 0°)
+#define IMU_PITCH_MIN -30.0   // Angle of attack that maps to motor position 0° (fully retracted)
+#define IMU_PITCH_MAX 30.0    // Angle of attack that maps to motor position MAX (fully extended)
 
-// Pressure mapping for automatic mode (adjust based on your application)
-#define PRESSURE_MIN 1000.0   // Pressure (hPa) that maps to motor position 0°
-#define PRESSURE_MAX 1020.0   // Pressure (hPa) that maps to motor position 65°
+// Airspeed mapping for automatic mode (based on pressure difference from baseline)
+#define AIRSPEED_MIN 0.0      // Airspeed (m/s) that maps to motor position 0° (fully retracted)
+#define AIRSPEED_MAX 20.0     // Airspeed (m/s) that maps to motor position MAX (fully extended)
 
 // Create sensor objects
 IMU_Sensor imuSensor;
@@ -256,16 +258,19 @@ void loop() {
     float pitchRaw = imuSensor.getPitch();
     float pitch = pitchRaw - imuPitchOffset;  // Apply calibration offset
     float pressure = pressureSensor.getPressure();
+    float airspeed = calculateAirspeed(pressure);  // Calculate airspeed
 
-    // Map sensor readings to motor position
-    targetPosition = calculateAutomaticPosition(pitch, pressure);
+    // Map sensor readings to motor position (using pitch and airspeed)
+    targetPosition = calculateAutomaticPosition(pitch, airspeed);
 
     // Print automatic mode status
     Serial.print("AUTO | Pitch: ");
     Serial.print(pitch, 1);
     Serial.print("° (raw: ");
     Serial.print(pitchRaw, 1);
-    Serial.print("°) | Pressure: ");
+    Serial.print("°) | Airspeed: ");
+    Serial.print(airspeed, 2);
+    Serial.print(" m/s | Pressure: ");
     Serial.print(pressure, 1);
     Serial.print(" hPa");
   } else {
@@ -342,6 +347,26 @@ void runManualCalibration() {
   Serial.print(imuPitchOffset, 2);
   Serial.println("°");
   Serial.println("(This pitch value = 0° angle of attack)");
+  Serial.println("");
+
+  // Step 2.6: Read baseline pressure (no airflow)
+  Serial.println("Reading baseline pressure (no airflow)...");
+  Serial.println("IMPORTANT: Ensure NO airflow on pressure sensor!");
+  delay(1000);
+
+  // Take multiple readings and average
+  float pressureSum = 0;
+  for (int i = 0; i < numReadings; i++) {
+    pressureSensor.readData();
+    pressureSum += pressureSensor.getPressure();
+    delay(100);
+  }
+  pressureBaseline = pressureSum / numReadings;
+
+  Serial.print("Baseline Pressure: ");
+  Serial.print(pressureBaseline, 2);
+  Serial.println(" hPa");
+  Serial.println("(This will be used to calculate airspeed)");
   Serial.println("");
 
   // Step 3: User manually positions motor to MAX using deploy toggle
@@ -422,13 +447,34 @@ void runManualCalibration() {
 }
 
 /*
- * Calculate target position in automatic mode based on IMU and pressure
- * You can adjust the weighting between IMU and pressure as needed
+ * Calculate airspeed from pressure difference
+ * Uses simplified Bernoulli equation: v = sqrt(2 * ΔP / ρ)
+ * where ρ = 1.225 kg/m³ (air density at sea level)
+ * Returns airspeed in m/s
  */
-long calculateAutomaticPosition(float pitch, float pressure) {
+float calculateAirspeed(float currentPressure) {
+  float deltaPressure_hPa = currentPressure - pressureBaseline;
+  float deltaPressure_Pa = deltaPressure_hPa * 100.0;  // Convert hPa to Pa
+
+  // Avoid negative or zero values
+  if (deltaPressure_Pa <= 0) {
+    return 0.0;
+  }
+
+  float airDensity = 1.225;  // kg/m³ at sea level, 15°C
+  float airspeed = sqrt((2.0 * deltaPressure_Pa) / airDensity);
+
+  return airspeed;
+}
+
+/*
+ * Calculate target position in automatic mode based on IMU and airspeed
+ * You can adjust the weighting between IMU and airspeed as needed
+ */
+long calculateAutomaticPosition(float pitch, float airspeed) {
   // Constrain inputs to expected ranges
   pitch = constrain(pitch, IMU_PITCH_MIN, IMU_PITCH_MAX);
-  pressure = constrain(pressure, PRESSURE_MIN, PRESSURE_MAX);
+  airspeed = constrain(airspeed, AIRSPEED_MIN, AIRSPEED_MAX);
 
   // Map IMU pitch to position (0 to calibrationMax)
   long pitchPosition = map((long)(pitch * 10),
@@ -437,16 +483,16 @@ long calculateAutomaticPosition(float pitch, float pressure) {
                            0,
                            calibrationMax);
 
-  // Map pressure to position (0 to calibrationMax)
-  long pressurePosition = map((long)(pressure * 10),
-                              (long)(PRESSURE_MIN * 10),
-                              (long)(PRESSURE_MAX * 10),
+  // Map airspeed to position (0 to calibrationMax)
+  long airspeedPosition = map((long)(airspeed * 10),
+                              (long)(AIRSPEED_MIN * 10),
+                              (long)(AIRSPEED_MAX * 10),
                               0,
                               calibrationMax);
 
   // Combine both sensors (50/50 weighting - adjust as needed)
   // You could also use just one sensor or different weighting
-  long targetPosition = (pitchPosition + pressurePosition) / 2;
+  long targetPosition = (pitchPosition + airspeedPosition) / 2;
 
   return constrain(targetPosition, 0, calibrationMax);
 }
@@ -505,6 +551,8 @@ void saveCalibration() {
   EEPROM.put(EEPROM_MAX_ADDR, calibrationMax);
   // Write IMU offset
   EEPROM.put(EEPROM_IMU_OFFSET_ADDR, imuPitchOffset);
+  // Write pressure baseline
+  EEPROM.put(EEPROM_PRESSURE_BASELINE_ADDR, pressureBaseline);
 }
 
 /*
@@ -524,6 +572,7 @@ bool loadCalibration() {
   EEPROM.get(EEPROM_MIN_ADDR, calibrationMin);
   EEPROM.get(EEPROM_MAX_ADDR, calibrationMax);
   EEPROM.get(EEPROM_IMU_OFFSET_ADDR, imuPitchOffset);
+  EEPROM.get(EEPROM_PRESSURE_BASELINE_ADDR, pressureBaseline);
 
   // Sanity check
   if (calibrationMax <= calibrationMin || calibrationMax > 10000) {

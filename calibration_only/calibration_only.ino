@@ -87,8 +87,9 @@
 
 #include <Wire.h>
 #include <EEPROM.h>
-#include "IMU_Sensor.h"
-#include "Switch.h"
+#include "../IMU_Sensor.h"
+#include "../Pressure_Sensor.h"
+#include "../Switch.h"
 
 // Motor driver pins
 #define MOTOR_AIN1 6
@@ -108,6 +109,7 @@
 #define EEPROM_MIN_ADDR 4        // Min position (4 bytes)
 #define EEPROM_MAX_ADDR 8        // Max position (4 bytes)
 #define EEPROM_IMU_OFFSET_ADDR 12 // IMU pitch offset at 0° angle of attack (4 bytes)
+#define EEPROM_PRESSURE_BASELINE_ADDR 16 // Baseline pressure for airspeed calc (4 bytes)
 #define EEPROM_MAGIC_NUMBER 0xCAFEBABE
 
 // Motor control constants
@@ -125,10 +127,12 @@ volatile long encoderCount = 0;
 long calibrationMin = 0;
 long calibrationMax = 0;
 float imuPitchOffset = 0.0;  // IMU pitch at 0° angle of attack
+float pressureBaseline = 0.0;  // Baseline pressure (no airflow) in hPa
 bool isCalibrated = false;
 
 // Sensor objects
 IMU_Sensor imuSensor;
+Pressure_Sensor pressureSensor;
 
 // Switch objects
 Switch modeSwitch(MODE_SWITCH_PIN);
@@ -175,6 +179,16 @@ void setup() {
     while (1);
   }
 
+  // Initialize Pressure Sensor
+  if (!pressureSensor.begin()) {
+    Serial.println("ERROR: Pressure sensor initialization failed!");
+    Serial.println("Check pressure sensor connections:");
+    Serial.println("  SDA -> Pin A1");
+    Serial.println("  SCL -> Pin A0");
+    Serial.println("  VIN -> 5V, GND -> GND");
+    while (1);
+  }
+
   Serial.println("Hardware initialized!");
   Serial.println("");
 
@@ -191,6 +205,9 @@ void setup() {
     Serial.print("  IMU Offset: ");
     Serial.print(imuPitchOffset, 2);
     Serial.println(" degrees");
+    Serial.print("  Pressure Baseline: ");
+    Serial.print(pressureBaseline, 2);
+    Serial.println(" hPa");
     Serial.println("");
     Serial.println("This will be OVERWRITTEN by new calibration.");
     Serial.println("");
@@ -223,6 +240,9 @@ void loop() {
     Serial.print("IMU Offset: ");
     Serial.print(imuPitchOffset, 2);
     Serial.println("° (0° angle of attack)");
+    Serial.print("Pressure Baseline: ");
+    Serial.print(pressureBaseline, 2);
+    Serial.println(" hPa (no airflow)");
     Serial.println("");
     Serial.println("You can now upload auto_control.ino");
     Serial.println("It will automatically load this calibration.");
@@ -289,6 +309,26 @@ void runManualCalibration() {
   Serial.print(imuPitchOffset, 2);
   Serial.println("°");
   Serial.println("(This pitch value = 0° angle of attack)");
+  Serial.println("");
+
+  // Step 2.6: Read baseline pressure (no airflow)
+  Serial.println("Reading baseline pressure (no airflow)...");
+  Serial.println("IMPORTANT: Ensure NO airflow on pressure sensor!");
+  delay(1000);
+
+  // Take multiple readings and average
+  float pressureSum = 0;
+  for (int i = 0; i < numReadings; i++) {
+    pressureSensor.readData();
+    pressureSum += pressureSensor.getPressure();
+    delay(100);
+  }
+  pressureBaseline = pressureSum / numReadings;
+
+  Serial.print("Baseline Pressure: ");
+  Serial.print(pressureBaseline, 2);
+  Serial.println(" hPa");
+  Serial.println("(This will be used to calculate airspeed)");
   Serial.println("");
 
   // Step 3: Manual positioning for MAX
@@ -376,6 +416,9 @@ void runManualCalibration() {
   Serial.print("IMU Offset: ");
   Serial.print(imuPitchOffset, 2);
   Serial.println("° (pitch at 0° angle of attack)");
+  Serial.print("Pressure Baseline: ");
+  Serial.print(pressureBaseline, 2);
+  Serial.println(" hPa (no airflow)");
   Serial.println("");
 
   // Save to EEPROM
@@ -392,6 +435,8 @@ void runManualCalibration() {
     Serial.println(calibrationMax);
     Serial.print("  IMU Offset: ");
     Serial.println(imuPitchOffset, 2);
+    Serial.print("  Pressure Baseline: ");
+    Serial.println(pressureBaseline, 2);
   } else {
     Serial.println("ERROR: Failed to verify EEPROM write!");
   }
@@ -409,6 +454,7 @@ void saveCalibration() {
   EEPROM.put(EEPROM_MIN_ADDR, calibrationMin);
   EEPROM.put(EEPROM_MAX_ADDR, calibrationMax);
   EEPROM.put(EEPROM_IMU_OFFSET_ADDR, imuPitchOffset);
+  EEPROM.put(EEPROM_PRESSURE_BASELINE_ADDR, pressureBaseline);
 }
 
 bool loadCalibration() {
@@ -422,6 +468,7 @@ bool loadCalibration() {
   EEPROM.get(EEPROM_MIN_ADDR, calibrationMin);
   EEPROM.get(EEPROM_MAX_ADDR, calibrationMax);
   EEPROM.get(EEPROM_IMU_OFFSET_ADDR, imuPitchOffset);
+  EEPROM.get(EEPROM_PRESSURE_BASELINE_ADDR, pressureBaseline);
 
   if (calibrationMax <= calibrationMin || calibrationMax > 10000) {
     return false;
