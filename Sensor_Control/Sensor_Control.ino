@@ -29,9 +29,9 @@
  */
 
 #include <Wire.h>
-#include "../IMU_Sensor.h"
-#include "../Pressure_Sensor.h"
-#include "../Switch.h"
+#include "IMU_Sensor.h"
+#include "Pressure_Sensor.h"
+#include "Switch.h"
 
 // Set the delay between fresh samples (milliseconds)
 #define SAMPLE_RATE_MS (100)
