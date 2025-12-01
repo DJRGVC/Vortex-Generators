@@ -4,16 +4,23 @@
  * This sketch reads data from:
  * - BNO-055 IMU (orientation, gyroscope, accelerometer)
  * - MPRLS Pressure Sensor
- * - Toggle Switch
+ * - Mode Toggle Switch (Pin 4) - Manual/Automatic mode selection
+ * - Deployment Toggle Switch (Pin 10) - Deployment control
  * - Limit Switch (SS-5GL)
  *
  * Both sensors share the same I2C bus:
  * SCL -> Arduino A0 (SCL)
  * SDA -> Arduino A1 (SDA)
  *
- * Toggle Switch:
+ * Mode Toggle Switch (Pin 4):
  * One terminal -> Digital Pin 4
  * Other terminal -> GND
+ * (OFF = Manual Mode, ON = Automatic Mode)
+ *
+ * Deployment Toggle Switch (Pin 10):
+ * One terminal -> Digital Pin 10
+ * Other terminal -> GND
+ * (Used in Manual Mode: OFF = Retracted, ON = Extended)
  *
  * Limit Switch (SS-5GL):
  * COM terminal -> Digital Pin 5
@@ -30,13 +37,15 @@
 #define SAMPLE_RATE_MS (100)
 
 // Define switch pins (avoid pins 2 & 3 - they're used for I2C!)
-#define TOGGLE_SWITCH_PIN 4
+#define MODE_SWITCH_PIN 4        // Manual/Automatic mode toggle
+#define DEPLOY_SWITCH_PIN 10     // Deployment control toggle
 #define LIMIT_SWITCH_PIN 5
 
 // Create sensor objects
 IMU_Sensor imuSensor;
 Pressure_Sensor pressureSensor;
-Switch toggleSwitch(TOGGLE_SWITCH_PIN);
+Switch modeSwitch(MODE_SWITCH_PIN);
+Switch deploySwitch(DEPLOY_SWITCH_PIN);
 Switch limitSwitch(LIMIT_SWITCH_PIN);
 
 void setup() {
@@ -67,13 +76,16 @@ void setup() {
     while (1);
   }
 
-  // Initialize Toggle Switch
-  toggleSwitch.begin();
+  // Initialize Mode Toggle Switch
+  modeSwitch.begin();
+
+  // Initialize Deployment Toggle Switch
+  deploySwitch.begin();
 
   // Initialize Limit Switch
   limitSwitch.begin();
 
-  Serial.println("\nAll sensors initialized successfully!");
+  Serial.println("\nAll sensors and switches initialized successfully!");
   Serial.println("Starting sensor readings...\n");
   delay(1000);
 }
@@ -82,24 +94,40 @@ void loop() {
   // Read data from all sensors and switches
   imuSensor.readData();
   pressureSensor.readData();
-  toggleSwitch.readState();
+  modeSwitch.readState();
+  deploySwitch.readState();
   limitSwitch.readState();
+
+  // Get angle of attack (pitch) and acceleration in Z-axis (vertical)
+  float angleOfAttack = imuSensor.getPitch();
+  float accelZ = imuSensor.getAccelZ();
 
   // Print header
   Serial.println("=== Sensor Reading ===");
 
-  // Print IMU data
-  imuSensor.printData();
+  // Print angle of attack
+  Serial.print("Angle of Attack: ");
+  Serial.print(angleOfAttack, 2);
+  Serial.println("°");
+
+  // Print acceleration in pitch axis (Z-axis - vertical)
+  Serial.print("Accel (Z-axis): ");
+  Serial.print(accelZ, 2);
+  Serial.println(" m/s²");
 
   // Print pressure data
   pressureSensor.printData();
 
-  // Print toggle switch state
-  Serial.print("Toggle ");
-  toggleSwitch.printState();
+  // Print mode toggle switch state (Manual/Auto)
+  Serial.print("Mode Switch (Pin 4):   ");
+  modeSwitch.printState();
+
+  // Print deployment toggle switch state (Retract/Extend)
+  Serial.print("Deploy Switch (Pin 10): ");
+  deploySwitch.printState();
 
   // Print limit switch state
-  Serial.print("Limit  ");
+  Serial.print("Limit Switch (Pin 5):   ");
   limitSwitch.printState();
 
   Serial.println();
