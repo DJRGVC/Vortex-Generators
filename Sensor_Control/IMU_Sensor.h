@@ -13,6 +13,8 @@ class IMU_Sensor {
     bool begin();
     void readData();
     void printData();
+    bool checkConnection();  // Check if BNO055 is still responding
+    void printDiagnostics();  // Print detailed diagnostic information
 
     // Getters for sensor data
     float getHeading();

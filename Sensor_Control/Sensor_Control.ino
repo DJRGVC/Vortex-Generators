@@ -51,42 +51,37 @@ Switch limitSwitch(LIMIT_SWITCH_PIN);
 void setup() {
   // Initialize serial communication
   Serial.begin(115200);
-  while (!Serial) delay(10);  // Wait for serial port to connect (Leonardo specific)
+  while (!Serial) delay(10);
 
-  Serial.println("Multi-Sensor System Starting...");
-  Serial.println("");
+  Serial.println(F("=== Sensor System ==="));
+  Serial.println(F("Leonardo: SDA=A1, SCL=A0"));
 
-  // Initialize I2C communication (shared by both sensors)
+  // Initialize I2C communication
   Wire.begin();
+  Wire.setClock(400000);
+  Serial.println(F("I2C @ 400kHz"));
 
   // Scan for I2C devices
-  Serial.println("Scanning I2C bus...");
   scanI2C();
-  Serial.println("");
 
   // Initialize IMU
   if (!imuSensor.begin()) {
-    Serial.println("IMU initialization failed! Check connections.");
+    Serial.println(F("IMU FAILED!"));
     while (1);
   }
 
   // Initialize Pressure Sensor
   if (!pressureSensor.begin()) {
-    Serial.println("Pressure sensor initialization failed! Check connections.");
+    Serial.println(F("Pressure FAILED!"));
     while (1);
   }
 
-  // Initialize Mode Toggle Switch
+  // Initialize switches
   modeSwitch.begin();
-
-  // Initialize Deployment Toggle Switch
   deploySwitch.begin();
-
-  // Initialize Limit Switch
   limitSwitch.begin();
 
-  Serial.println("\nAll sensors and switches initialized successfully!");
-  Serial.println("Starting sensor readings...\n");
+  Serial.println(F("\nAll systems GO!\n"));
   delay(1000);
 }
 
@@ -139,36 +134,32 @@ void scanI2C() {
   byte error, address;
   int nDevices = 0;
 
-  Serial.println("Scanning for I2C devices...");
+  Serial.println(F("I2C Scan..."));
 
   for(address = 1; address < 127; address++) {
     Wire.beginTransmission(address);
     error = Wire.endTransmission();
 
     if (error == 0) {
-      Serial.print("I2C device found at address 0x");
+      Serial.print(F("  0x"));
       if (address < 16) Serial.print("0");
       Serial.print(address, HEX);
+
+      if (address == 0x28 || address == 0x29) {
+        Serial.print(F(" (BNO055)"));
+      } else if (address == 0x18) {
+        Serial.print(F(" (MPRLS)"));
+      }
       Serial.println();
       nDevices++;
-    }
-    else if (error == 4) {
-      Serial.print("Unknown error at address 0x");
-      if (address < 16) Serial.print("0");
-      Serial.println(address, HEX);
     }
   }
 
   if (nDevices == 0) {
-    Serial.println("No I2C devices found!");
-    Serial.println("Check your wiring:");
-    Serial.println("  - SDA should be on pin A1");
-    Serial.println("  - SCL should be on pin A0");
-    Serial.println("  - VIN to 5V or 3.3V");
-    Serial.println("  - GND to GND");
+    Serial.println(F("NO DEVICES! Check wiring."));
   } else {
-    Serial.print("Found ");
+    Serial.print(F("Found "));
     Serial.print(nDevices);
-    Serial.println(" device(s)");
+    Serial.println(F(" device(s)"));
   }
 }
