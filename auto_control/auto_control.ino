@@ -5,18 +5,18 @@
  * with encoder and DRV8833 motor driver.
  *
  * MODES:
- * - Manual Mode (Pin 4 toggle OFF): Pin 10 toggle controls deployment
- *   - Pin 10 OFF: Fully retracted (0 degrees)
- *   - Pin 10 ON: Fully extended (65 degrees)
- * - Automatic Mode (Pin 4 toggle ON): IMU/Pressure sensor controls deployment
- *   - Motor position based on IMU pitch and pressure readings
+ * - Manual Mode (Pin 10 toggle OFF): Pin 4 toggle controls deployment
+ *   - Pin 4 OFF: Fully retracted (0 degrees)
+ *   - Pin 4 ON: Fully extended (65 degrees)
+ * - Automatic Mode (Pin 10 toggle ON): IMU/Pressure sensor controls deployment
+ *   - Motor position based on IMU roll and pressure readings
  *
  * CALIBRATION MODE:
- * - To enter: Hold BOTH toggle switches (Pin 4 and Pin 10) ON during startup
+ * - To enter: Hold BOTH toggle switches (Pin 10 and Pin 4) ON during startup
  * - Calibration process:
- *   1. Move clockwise until limit switch is hit (saves MIN position = 0)
- *   2. User manually positions motor to desired MAX position using Pin 10 toggle
- *   3. Press Pin 4 toggle to save MAX position to EEPROM
+ *   1. Auto-move COUNTER-CLOCKWISE until limit switch triggers (MIN = 0)
+ *   2. Pin 4 ON = move clockwise (extend), OFF = stop
+ *   3. Turn Pin 10 ON to save MAX position to EEPROM
  * - Calibration values persist across power cycles
  * - If no calibration exists, system will prompt for calibration
  *
@@ -44,13 +44,13 @@
  *
  * SWITCHES:
  * -----------------------------------
- * Mode Toggle Switch (Pin 4):
- *   One terminal -> Arduino Pin 4
+ * Mode Toggle Switch (Pin 10):
+ *   One terminal -> Arduino Pin 10
  *   Other terminal -> Arduino GND
  *   (OFF = Manual Mode, ON = Automatic Mode)
  *
- * Deployment Toggle Switch (Pin 10):
- *   One terminal -> Arduino Pin 10
+ * Deployment Toggle Switch (Pin 4):
+ *   One terminal -> Arduino Pin 4
  *   Other terminal -> Arduino GND
  *   (Used in Manual Mode: OFF = Retracted, ON = Extended)
  *
@@ -89,13 +89,13 @@
  * ============================================================================
  * PIN USAGE SUMMARY:
  * ============================================================================
- *   Pin 4  - Mode Toggle Switch (Manual/Automatic)
+ *   Pin 4  - Deployment Toggle Switch (Manual mode control)
  *   Pin 5  - Limit Switch
  *   Pin 6  - Motor AIN1 (PWM)
  *   Pin 7  - Encoder A (interrupt)
  *   Pin 8  - Encoder B
  *   Pin 9  - Motor AIN2 (PWM)
- *   Pin 10 - Deployment Toggle Switch (Manual mode control)
+ *   Pin 10 - Mode Toggle Switch (Manual/Automatic)
  *   Pin A0 - I2C SCL (IMU & Pressure)
  *   Pin A1 - I2C SDA (IMU & Pressure)
  * ============================================================================
@@ -103,9 +103,9 @@
 
 #include <Wire.h>
 #include <EEPROM.h>
-#include "../IMU_Sensor.h"
-#include "../Pressure_Sensor.h"
-#include "../Switch.h"
+#include "IMU_Sensor.h"
+#include "Pressure_Sensor.h"
+#include "Switch.h"
 
 // Motor driver pins
 #define MOTOR_AIN1 6
@@ -116,21 +116,21 @@
 #define ENCODER_B 8
 
 // Switch pins
-#define MODE_SWITCH_PIN 4        // Manual/Automatic mode selection
-#define DEPLOY_SWITCH_PIN 10     // Deployment control (manual mode)
+#define MODE_SWITCH_PIN 10       // Manual/Automatic mode selection
+#define DEPLOY_SWITCH_PIN 4      // Deployment control (manual mode)
 #define LIMIT_SWITCH_PIN 5
 
 // EEPROM addresses for calibration storage
 #define EEPROM_MAGIC_ADDR 0      // Magic number to verify valid calibration
 #define EEPROM_MIN_ADDR 4        // Min position (4 bytes for long)
 #define EEPROM_MAX_ADDR 8        // Max position (4 bytes for long)
-#define EEPROM_IMU_OFFSET_ADDR 12 // IMU pitch offset at 0° angle of attack (4 bytes for float)
+#define EEPROM_IMU_OFFSET_ADDR 12 // IMU roll offset at 0° angle of attack (4 bytes for float)
 #define EEPROM_PRESSURE_BASELINE_ADDR 16 // Baseline pressure for airspeed calc (4 bytes for float)
 #define EEPROM_MAGIC_NUMBER 0xCAFEBABE  // Magic number to verify EEPROM data
 
 // Motor control constants
-#define CALIBRATION_SPEED 150     // PWM speed during calibration (0-255)
-#define CONTROL_SPEED 200         // PWM speed during normal operation
+#define CALIBRATION_SPEED 45      // PWM speed during calibration (0-255)
+#define CONTROL_SPEED 54          // PWM speed during normal operation
 #define CALIBRATION_DEGREES 65.0  // Degrees to rotate back from limit
 
 // Encoder constants
@@ -143,11 +143,11 @@
 volatile long encoderCount = 0;
 long calibrationMin = 0;  // Minimum position (at limit switch)
 long calibrationMax = 0;  // Maximum position (user-defined)
-float imuPitchOffset = 0.0;  // IMU pitch at 0° angle of attack
+float imuPitchOffset = 0.0;  // IMU roll at 0° angle of attack
 float pressureBaseline = 0.0;  // Baseline pressure (no airflow) in hPa
 bool isCalibrated = false;
 
-// IMU pitch mapping for automatic mode (relative to calibrated 0°)
+// IMU roll mapping for automatic mode (relative to calibrated 0°)
 #define IMU_PITCH_MIN -30.0   // Angle of attack that maps to motor position 0° (fully retracted)
 #define IMU_PITCH_MAX 30.0    // Angle of attack that maps to motor position MAX (fully extended)
 
@@ -255,16 +255,16 @@ void loop() {
     imuSensor.readData();
     pressureSensor.readData();
 
-    float pitchRaw = imuSensor.getPitch();
+    float pitchRaw = imuSensor.getRoll();
     float pitch = pitchRaw - imuPitchOffset;  // Apply calibration offset
-    float pressure = pressureSensor.getPressure();
+    float pressure = pressureSensor.getPressure_hPa();
     float airspeed = calculateAirspeed(pressure);  // Calculate airspeed
 
     // Map sensor readings to motor position (using pitch and airspeed)
     targetPosition = calculateAutomaticPosition(pitch, airspeed);
 
     // Print automatic mode status
-    Serial.print("AUTO | Pitch: ");
+    Serial.print("AUTO | Roll: ");
     Serial.print(pitch, 1);
     Serial.print("° (raw: ");
     Serial.print(pitchRaw, 1);
@@ -304,81 +304,90 @@ void loop() {
  * Manual calibration routine with user-controlled max position
  */
 void runManualCalibration() {
-  Serial.println("=== STARTING MANUAL CALIBRATION ===");
-  Serial.println("");
+  Serial.println(F("=== CALIBRATION ==="));
 
-  // Step 1: Move clockwise until limit switch is hit (find MIN)
-  Serial.println("Step 1: Finding MIN position (limit switch)...");
-  moveClockwise(CALIBRATION_SPEED);
+  // Step 1: Move counter-clockwise to limit switch (find MIN)
+  Serial.println(F("Finding MIN..."));
+  Serial.println(F("Moving CCW to limit..."));
+
+  moveCounterClockwise(CALIBRATION_SPEED);
+
+  unsigned long startTime = millis();
+  unsigned long timeout = 15000;  // 15 second timeout
+  unsigned long lastDebug = 0;
 
   while (true) {
     limitSwitch.readState();
-    if (limitSwitch.isOn()) {  // Limit switch pressed
+    bool switchState = limitSwitch.isOn();
+
+    // Debug output every 500ms
+    if (millis() - lastDebug > 500) {
+      Serial.print(F("Lim: "));
+      Serial.println(switchState ? F("ON") : F("OFF"));
+      lastDebug = millis();
+    }
+
+    if (switchState) {
       stopMotor();
-      Serial.println("Limit switch hit!");
+      Serial.println(F("MIN found!"));
       break;
     }
+
+    // Timeout check
+    if (millis() - startTime > timeout) {
+      stopMotor();
+      Serial.println(F("Timeout - using current pos"));
+      break;
+    }
+
     delay(10);
   }
 
-  delay(500);  // Brief pause
+  delay(500);
 
   // Step 2: Zero encoder at limit position (MIN = 0)
   encoderCount = 0;
   calibrationMin = 0;
-  Serial.println("MIN position set to 0 (at limit switch)");
-  Serial.println("");
+  Serial.println(F("MIN = 0"));
 
-  // Step 2.5: Read IMU pitch at this position (0° angle of attack)
-  Serial.println("Reading IMU pitch at 0° angle of attack...");
-  delay(500);  // Let motor settle
+  // Step 2.5: Read IMU roll at this position (0° angle of attack)
+  Serial.println(F("Reading IMU..."));
+  delay(500);
 
-  // Take multiple readings and average
   float pitchSum = 0;
-  int numReadings = 10;
+  int numReadings = 5;  // Reduced to save memory
   for (int i = 0; i < numReadings; i++) {
     imuSensor.readData();
-    pitchSum += imuSensor.getPitch();
+    pitchSum += imuSensor.getRoll();
     delay(100);
   }
   imuPitchOffset = pitchSum / numReadings;
 
-  Serial.print("IMU Offset calibrated: ");
-  Serial.print(imuPitchOffset, 2);
-  Serial.println("°");
-  Serial.println("(This pitch value = 0° angle of attack)");
-  Serial.println("");
+  Serial.print(F("IMU: "));
+  Serial.println(imuPitchOffset, 2);
 
   // Step 2.6: Read baseline pressure (no airflow)
-  Serial.println("Reading baseline pressure (no airflow)...");
-  Serial.println("IMPORTANT: Ensure NO airflow on pressure sensor!");
-  delay(1000);
+  Serial.println(F("Reading pressure..."));
+  delay(500);
 
-  // Take multiple readings and average
   float pressureSum = 0;
   for (int i = 0; i < numReadings; i++) {
     pressureSensor.readData();
-    pressureSum += pressureSensor.getPressure();
+    pressureSum += pressureSensor.getPressure_hPa();
     delay(100);
   }
   pressureBaseline = pressureSum / numReadings;
 
-  Serial.print("Baseline Pressure: ");
-  Serial.print(pressureBaseline, 2);
-  Serial.println(" hPa");
-  Serial.println("(This will be used to calculate airspeed)");
-  Serial.println("");
+  Serial.print(F("P: "));
+  Serial.println(pressureBaseline, 2);
 
   // Step 3: User manually positions motor to MAX using deploy toggle
-  Serial.println("Step 3: Position motor to desired MAX position");
-  Serial.println("  - Toggle Pin 10 ON to move forward (extend)");
-  Serial.println("  - Toggle Pin 10 OFF to move backward (retract)");
-  Serial.println("  - When satisfied, toggle Pin 4 OFF then ON to save");
-  Serial.println("");
+  Serial.println(F("Set MAX:"));
+  Serial.println(F("Pin4 ON=CW, OFF=Stop"));
+  Serial.println(F("Pin10 ON=Save"));
 
   bool lastDeployState = false;
-  bool lastModeState = true;  // Start true since we're in calibration mode
-  int manualSpeed = 100;  // Slower speed for manual positioning
+  unsigned long lastPrint = 0;
 
   while (true) {
     deploySwitch.readState();
@@ -387,60 +396,50 @@ void runManualCalibration() {
     bool currentDeployState = deploySwitch.isOn();
     bool currentModeState = modeSwitch.isOn();
 
-    // Check for mode switch toggle (OFF -> ON) to save
-    if (!lastModeState && currentModeState) {
+    // Check if mode switch is ON to save
+    if (currentModeState) {
       stopMotor();
-      Serial.println("");
-      Serial.println("Saving MAX position!");
+      Serial.println(F("SAVING!"));
       break;
     }
 
     // Control motor based on deploy switch
-    if (currentDeployState && !lastDeployState) {
-      // Just turned ON - move forward
-      Serial.println("Moving forward...");
-    } else if (!currentDeployState && lastDeployState) {
-      // Just turned OFF - move backward
-      Serial.println("Moving backward...");
+    if (currentDeployState != lastDeployState) {
+      if (currentDeployState) {
+        Serial.println(F("CW"));
+      } else {
+        Serial.println(F("STOP"));
+      }
     }
 
+    // Deploy switch ON = move clockwise (extend), OFF = stop
     if (currentDeployState) {
-      moveCounterClockwise(manualSpeed);
+      moveClockwise(CALIBRATION_SPEED);
     } else {
-      moveClockwise(manualSpeed);
+      stopMotor();
     }
 
-    // Print current position periodically
-    static unsigned long lastPrint = 0;
+    // Print position periodically
     if (millis() - lastPrint > 500) {
-      Serial.print("Current position: ");
+      Serial.print(F("Pos: "));
       Serial.println(encoderCount);
       lastPrint = millis();
     }
 
     lastDeployState = currentDeployState;
-    lastModeState = currentModeState;
     delay(10);
   }
 
   // Step 4: Save calibration
   calibrationMax = encoderCount;
 
-  Serial.println("");
-  Serial.println("=== CALIBRATION COMPLETE ===");
-  Serial.print("MIN position: ");
+  Serial.print(F("MIN: "));
   Serial.println(calibrationMin);
-  Serial.print("MAX position: ");
+  Serial.print(F("MAX: "));
   Serial.println(calibrationMax);
-  Serial.print("Range: ");
-  Serial.print((float)calibrationMax / COUNTS_PER_DEGREE, 1);
-  Serial.println(" degrees");
-  Serial.println("");
 
-  // Save to EEPROM
   saveCalibration();
-  Serial.println("Calibration saved to EEPROM");
-  Serial.println("");
+  Serial.println(F("Saved!"));
 
   isCalibrated = true;
   delay(2000);
@@ -468,7 +467,7 @@ float calculateAirspeed(float currentPressure) {
 }
 
 /*
- * Calculate target position in automatic mode based on IMU and airspeed
+ * Calculate target position in automatic mode based on IMU roll and airspeed
  * You can adjust the weighting between IMU and airspeed as needed
  */
 long calculateAutomaticPosition(float pitch, float airspeed) {

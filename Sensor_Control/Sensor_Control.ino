@@ -4,21 +4,21 @@
  * This sketch reads data from:
  * - BNO-055 IMU (orientation, gyroscope, accelerometer)
  * - MPRLS Pressure Sensor
- * - Mode Toggle Switch (Pin 4) - Manual/Automatic mode selection
- * - Deployment Toggle Switch (Pin 10) - Deployment control
+ * - Mode Toggle Switch (Pin 10) - Manual/Automatic mode selection
+ * - Deployment Toggle Switch (Pin 4) - Deployment control
  * - Limit Switch (SS-5GL)
  *
  * Both sensors share the same I2C bus:
  * SCL -> Arduino A0 (SCL)
  * SDA -> Arduino A1 (SDA)
  *
- * Mode Toggle Switch (Pin 4):
- * One terminal -> Digital Pin 4
+ * Mode Toggle Switch (Pin 10):
+ * One terminal -> Digital Pin 10
  * Other terminal -> GND
  * (OFF = Manual Mode, ON = Automatic Mode)
  *
- * Deployment Toggle Switch (Pin 10):
- * One terminal -> Digital Pin 10
+ * Deployment Toggle Switch (Pin 4):
+ * One terminal -> Digital Pin 4
  * Other terminal -> GND
  * (Used in Manual Mode: OFF = Retracted, ON = Extended)
  *
@@ -37,8 +37,8 @@
 #define SAMPLE_RATE_MS (100)
 
 // Define switch pins (avoid pins 2 & 3 - they're used for I2C!)
-#define MODE_SWITCH_PIN 4        // Manual/Automatic mode toggle
-#define DEPLOY_SWITCH_PIN 10     // Deployment control toggle
+#define MODE_SWITCH_PIN 10       // Manual/Automatic mode toggle
+#define DEPLOY_SWITCH_PIN 4      // Deployment control toggle
 #define LIMIT_SWITCH_PIN 5
 
 // Create sensor objects
@@ -93,8 +93,8 @@ void loop() {
   deploySwitch.readState();
   limitSwitch.readState();
 
-  // Get angle of attack (pitch) and acceleration in Z-axis (vertical)
-  float angleOfAttack = imuSensor.getPitch();
+  // Get angle of attack (roll) and acceleration in Z-axis (vertical)
+  float angleOfAttack = imuSensor.getRoll();
   float accelZ = imuSensor.getAccelZ();
 
   // Print header
@@ -114,11 +114,11 @@ void loop() {
   pressureSensor.printData();
 
   // Print mode toggle switch state (Manual/Auto)
-  Serial.print("Mode Switch (Pin 4):   ");
+  Serial.print("Mode Switch (Pin 10):  ");
   modeSwitch.printState();
 
   // Print deployment toggle switch state (Retract/Extend)
-  Serial.print("Deploy Switch (Pin 10): ");
+  Serial.print("Deploy Switch (Pin 4):  ");
   deploySwitch.printState();
 
   // Print limit switch state
