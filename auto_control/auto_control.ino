@@ -12,17 +12,15 @@
  *   - Motor position based on IMU roll and pressure readings
  *
  * CALIBRATION MODE:
- * - To enter: Hold BOTH toggle switches (Pin 10 and Pin 4) ON during startup
+ * - Calibration runs AUTOMATICALLY at every startup
  * - Calibration process:
  *   1. Auto-move COUNTER-CLOCKWISE until limit switch triggers (MIN = 0)
- *   2. Pin 4 ON = move clockwise (extend), OFF = stop
- *   3. Turn Pin 10 ON to save MAX position to EEPROM
+ *   2. Read IMU roll offset at MIN position (0° angle of attack reference)
+ *   3. Read baseline pressure (no airflow reference)
+ *   4. Pin 4 ON = move clockwise (extend), OFF = stop
+ *   5. Turn Pin 10 ON to save MAX position to EEPROM
  * - Calibration values persist across power cycles
- * - If no calibration exists, system will prompt for calibration
- *
- * Normal startup (toggles not both ON):
- * - Load saved calibration from EEPROM
- * - Enter selected mode (manual or automatic)
+ * - After calibration, system enters selected mode (manual or automatic)
  *
  * ============================================================================
  * COMPLETE WIRING GUIDE - ALL CONNECTIONS
@@ -130,7 +128,7 @@
 
 // Motor control constants
 #define CALIBRATION_SPEED 45      // PWM speed during calibration (0-255)
-#define CONTROL_SPEED 54          // PWM speed during normal operation
+#define CONTROL_SPEED 45          // PWM speed during normal operation (0-255)
 #define CALIBRATION_DEGREES 65.0  // Degrees to rotate back from limit
 
 // Encoder constants
@@ -204,35 +202,10 @@ void setup() {
   Serial.println("");
   delay(1000);
 
-  // Check if both toggles are ON for calibration mode
-  modeSwitch.readState();
-  deploySwitch.readState();
-  bool enterCalibrationMode = modeSwitch.isOn() && deploySwitch.isOn();
-
-  if (enterCalibrationMode) {
-    Serial.println("BOTH TOGGLES ON - ENTERING CALIBRATION MODE");
-    Serial.println("");
-    runManualCalibration();
-  } else {
-    // Try to load saved calibration
-    if (loadCalibration()) {
-      Serial.println("Loaded saved calibration from EEPROM");
-      Serial.print("Min position: ");
-      Serial.println(calibrationMin);
-      Serial.print("Max position: ");
-      Serial.println(calibrationMax);
-      Serial.print("IMU Offset: ");
-      Serial.print(imuPitchOffset, 2);
-      Serial.println("° (0° angle of attack)");
-      Serial.println("");
-      isCalibrated = true;
-    } else {
-      Serial.println("WARNING: No saved calibration found!");
-      Serial.println("Please restart with both toggles ON to calibrate.");
-      Serial.println("");
-      while(1);  // Halt - require calibration
-    }
-  }
+  // Always run calibration at startup
+  Serial.println("RUNNING CALIBRATION AT STARTUP");
+  Serial.println("");
+  runManualCalibration();
 
   delay(1000);
 }
@@ -497,7 +470,7 @@ long calculateAutomaticPosition(float pitch, float airspeed) {
 }
 
 /*
- * Move motor to target position with simple proportional control
+ * Move motor to target position with constant speed control
  */
 void moveToPosition(long targetPosition) {
   long error = targetPosition - encoderCount;
@@ -508,15 +481,13 @@ void moveToPosition(long targetPosition) {
     return;
   }
 
-  // Simple proportional speed control
-  int speed = constrain(abs(error) / 2, 80, CONTROL_SPEED);
-
+  // Use constant speed of 45 for all movements
   if (error > 0) {
     // Need to move counterclockwise (increase count)
-    moveCounterClockwise(speed);
+    moveCounterClockwise(CONTROL_SPEED);
   } else {
     // Need to move clockwise (decrease count)
-    moveClockwise(speed);
+    moveClockwise(CONTROL_SPEED);
   }
 }
 
