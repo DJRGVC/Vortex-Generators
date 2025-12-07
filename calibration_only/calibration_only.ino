@@ -35,13 +35,13 @@
  *
  * SWITCHES:
  * -----------------------------------
- * Mode Toggle Switch (Pin 4):
- *   One terminal -> Arduino Pin 4
+ * Mode Toggle Switch (Pin 10):
+ *   One terminal -> Arduino Pin 10
  *   Other terminal -> Arduino GND
  *   (Used to confirm/save calibration)
  *
- * Deployment Toggle Switch (Pin 10):
- *   One terminal -> Arduino Pin 10
+ * Deployment Toggle Switch (Pin 4):
+ *   One terminal -> Arduino Pin 4
  *   Other terminal -> Arduino GND
  *   (Used to position motor during calibration)
  *
@@ -73,13 +73,13 @@
  * ============================================================================
  * PIN USAGE SUMMARY:
  * ============================================================================
- *   Pin 4  - Mode Toggle Switch (Calibration save confirmation)
+ *   Pin 4  - Deployment Toggle Switch (Manual positioning)
  *   Pin 5  - Limit Switch
  *   Pin 6  - Motor AIN1 (PWM)
  *   Pin 7  - Encoder A (interrupt)
  *   Pin 8  - Encoder B
  *   Pin 9  - Motor AIN2 (PWM)
- *   Pin 10 - Deployment Toggle Switch (Manual positioning)
+ *   Pin 10 - Mode Toggle Switch (Calibration save confirmation)
  *   Pin A0 - I2C SCL (IMU)
  *   Pin A1 - I2C SDA (IMU)
  * ============================================================================
@@ -87,9 +87,9 @@
 
 #include <Wire.h>
 #include <EEPROM.h>
-#include "../IMU_Sensor.h"
-#include "../Pressure_Sensor.h"
-#include "../Switch.h"
+#include "IMU_Sensor.h"
+#include "Pressure_Sensor.h"
+#include "Switch.h"
 
 // Motor driver pins
 #define MOTOR_AIN1 6
@@ -100,21 +100,21 @@
 #define ENCODER_B 8
 
 // Switch pins
-#define MODE_SWITCH_PIN 4        // Save confirmation
-#define DEPLOY_SWITCH_PIN 10     // Manual positioning control
+#define MODE_SWITCH_PIN 10       // Save confirmation
+#define DEPLOY_SWITCH_PIN 4      // Manual positioning control
 #define LIMIT_SWITCH_PIN 5
 
 // EEPROM addresses (MUST match auto_control.ino)
 #define EEPROM_MAGIC_ADDR 0      // Magic number (4 bytes)
 #define EEPROM_MIN_ADDR 4        // Min position (4 bytes)
 #define EEPROM_MAX_ADDR 8        // Max position (4 bytes)
-#define EEPROM_IMU_OFFSET_ADDR 12 // IMU pitch offset at 0° angle of attack (4 bytes)
+#define EEPROM_IMU_OFFSET_ADDR 12 // IMU roll offset at 0° angle of attack (4 bytes)
 #define EEPROM_PRESSURE_BASELINE_ADDR 16 // Baseline pressure for airspeed calc (4 bytes)
 #define EEPROM_MAGIC_NUMBER 0xCAFEBABE
 
 // Motor control constants
-#define CALIBRATION_SPEED 150
-#define MANUAL_SPEED 100
+#define CALIBRATION_SPEED 45      // Slow speed for finding limit switch
+#define MANUAL_SPEED 45           // Slow speed for manual positioning
 
 // Encoder constants
 #define ENCODER_CPR 12
@@ -126,7 +126,7 @@
 volatile long encoderCount = 0;
 long calibrationMin = 0;
 long calibrationMax = 0;
-float imuPitchOffset = 0.0;  // IMU pitch at 0° angle of attack
+float imuPitchOffset = 0.0;  // IMU roll at 0° angle of attack
 float pressureBaseline = 0.0;  // Baseline pressure (no airflow) in hPa
 bool isCalibrated = false;
 
@@ -143,13 +143,9 @@ void setup() {
   Serial.begin(115200);
   while (!Serial) delay(10);
 
-  Serial.println("========================================");
-  Serial.println("  CALIBRATION-ONLY MODE");
-  Serial.println("========================================");
-  Serial.println("");
-  Serial.println("This sketch calibrates motor limits and");
-  Serial.println("saves them to EEPROM for use by other sketches.");
-  Serial.println("");
+  Serial.println(F("=== CALIBRATION MODE ==="));
+  Serial.println(F("Starting in 3 sec..."));
+  delay(3000);
 
   // Initialize motor pins
   pinMode(MOTOR_AIN1, OUTPUT);
@@ -171,49 +167,21 @@ void setup() {
 
   // Initialize IMU
   if (!imuSensor.begin()) {
-    Serial.println("ERROR: IMU initialization failed!");
-    Serial.println("Check IMU connections:");
-    Serial.println("  SDA -> Pin A1");
-    Serial.println("  SCL -> Pin A0");
-    Serial.println("  VIN -> 5V, GND -> GND");
+    Serial.println(F("IMU FAILED!"));
     while (1);
   }
 
   // Initialize Pressure Sensor
   if (!pressureSensor.begin()) {
-    Serial.println("ERROR: Pressure sensor initialization failed!");
-    Serial.println("Check pressure sensor connections:");
-    Serial.println("  SDA -> Pin A1");
-    Serial.println("  SCL -> Pin A0");
-    Serial.println("  VIN -> 5V, GND -> GND");
+    Serial.println(F("PRESSURE FAILED!"));
     while (1);
   }
 
-  Serial.println("Hardware initialized!");
-  Serial.println("");
+  Serial.println(F("HW OK"));
 
   // Check if calibration already exists
   if (loadCalibration()) {
-    Serial.println("WARNING: Existing calibration found in EEPROM:");
-    Serial.print("  MIN: ");
-    Serial.println(calibrationMin);
-    Serial.print("  MAX: ");
-    Serial.println(calibrationMax);
-    Serial.print("  Range: ");
-    Serial.print((float)calibrationMax / COUNTS_PER_DEGREE, 1);
-    Serial.println(" degrees");
-    Serial.print("  IMU Offset: ");
-    Serial.print(imuPitchOffset, 2);
-    Serial.println(" degrees");
-    Serial.print("  Pressure Baseline: ");
-    Serial.print(pressureBaseline, 2);
-    Serial.println(" hPa");
-    Serial.println("");
-    Serial.println("This will be OVERWRITTEN by new calibration.");
-    Serial.println("");
-  } else {
-    Serial.println("No existing calibration found.");
-    Serial.println("");
+    Serial.println(F("Old cal found - will overwrite"));
   }
 
   delay(2000);
@@ -223,40 +191,14 @@ void setup() {
 }
 
 void loop() {
-  // After calibration is complete, just display the results
   if (isCalibrated) {
-    Serial.println("========================================");
-    Serial.println("  CALIBRATION COMPLETE & SAVED");
-    Serial.println("========================================");
-    Serial.print("MIN Position: ");
-    Serial.print(calibrationMin);
-    Serial.println(" counts");
-    Serial.print("MAX Position: ");
-    Serial.print(calibrationMax);
-    Serial.println(" counts");
-    Serial.print("Range: ");
-    Serial.print((float)calibrationMax / COUNTS_PER_DEGREE, 1);
-    Serial.println(" degrees");
-    Serial.print("IMU Offset: ");
-    Serial.print(imuPitchOffset, 2);
-    Serial.println("° (0° angle of attack)");
-    Serial.print("Pressure Baseline: ");
-    Serial.print(pressureBaseline, 2);
-    Serial.println(" hPa (no airflow)");
-    Serial.println("");
-    Serial.println("You can now upload auto_control.ino");
-    Serial.println("It will automatically load this calibration.");
-    Serial.println("");
-    Serial.println("Or reset this Arduino to recalibrate.");
-    Serial.println("========================================");
-    Serial.println("");
-
-    // Infinite loop - calibration is done
+    Serial.println(F("=== DONE ==="));
+    Serial.println(F("Upload auto_control.ino"));
     while(1) {
       delay(10000);
     }
   } else {
-    Serial.println("ERROR: Calibration failed!");
+    Serial.println(F("FAIL!"));
     delay(1000);
   }
 }
@@ -265,21 +207,42 @@ void loop() {
  * Manual calibration routine
  */
 void runManualCalibration() {
-  Serial.println("=== STARTING MANUAL CALIBRATION ===");
-  Serial.println("");
+  Serial.println(F("=== CALIBRATION ==="));
 
   // Step 1: Find MIN position at limit switch
-  Serial.println("Step 1: Finding MIN position...");
-  Serial.println("Moving clockwise to limit switch...");
-  moveClockwise(CALIBRATION_SPEED);
+  Serial.println(F("Finding MIN..."));
+  Serial.println(F("Moving CCW to limit..."));
+
+  moveCounterClockwise(CALIBRATION_SPEED);
+
+  unsigned long startTime = millis();
+  unsigned long timeout = 15000;  // 15 second timeout
+  unsigned long lastDebug = 0;
 
   while (true) {
     limitSwitch.readState();
-    if (limitSwitch.isOn()) {
+    bool switchState = limitSwitch.isOn();
+
+    // Debug output every 500ms
+    if (millis() - lastDebug > 500) {
+      Serial.print(F("Lim: "));
+      Serial.println(switchState ? F("ON") : F("OFF"));
+      lastDebug = millis();
+    }
+
+    if (switchState) {
       stopMotor();
-      Serial.println("Limit switch hit!");
+      Serial.println(F("MIN found!"));
       break;
     }
+
+    // Timeout check
+    if (millis() - startTime > timeout) {
+      stopMotor();
+      Serial.println(F("Timeout - using current pos"));
+      break;
+    }
+
     delay(10);
   }
 
@@ -288,71 +251,45 @@ void runManualCalibration() {
   // Step 2: Set MIN to 0
   encoderCount = 0;
   calibrationMin = 0;
-  Serial.println("MIN position set to 0");
-  Serial.println("");
+  Serial.println(F("MIN = 0"));
 
-  // Step 2.5: Read IMU pitch at this position (0° angle of attack)
-  Serial.println("Reading IMU pitch at 0° angle of attack...");
-  delay(500);  // Let motor settle
+  // Step 2.5: Read IMU roll at this position (0° angle of attack)
+  Serial.println(F("Reading IMU..."));
+  delay(500);
 
-  // Take multiple readings and average
   float pitchSum = 0;
-  int numReadings = 10;
+  int numReadings = 5;
   for (int i = 0; i < numReadings; i++) {
     imuSensor.readData();
-    pitchSum += imuSensor.getPitch();
+    pitchSum += imuSensor.getRoll();
     delay(100);
   }
   imuPitchOffset = pitchSum / numReadings;
 
-  Serial.print("IMU Offset calibrated: ");
-  Serial.print(imuPitchOffset, 2);
-  Serial.println("°");
-  Serial.println("(This pitch value = 0° angle of attack)");
-  Serial.println("");
+  Serial.print(F("IMU: "));
+  Serial.println(imuPitchOffset, 2);
 
   // Step 2.6: Read baseline pressure (no airflow)
-  Serial.println("Reading baseline pressure (no airflow)...");
-  Serial.println("IMPORTANT: Ensure NO airflow on pressure sensor!");
-  delay(1000);
+  Serial.println(F("Reading pressure..."));
+  delay(500);
 
-  // Take multiple readings and average
   float pressureSum = 0;
   for (int i = 0; i < numReadings; i++) {
     pressureSensor.readData();
-    pressureSum += pressureSensor.getPressure();
+    pressureSum += pressureSensor.getPressure_hPa();
     delay(100);
   }
   pressureBaseline = pressureSum / numReadings;
 
-  Serial.print("Baseline Pressure: ");
-  Serial.print(pressureBaseline, 2);
-  Serial.println(" hPa");
-  Serial.println("(This will be used to calculate airspeed)");
-  Serial.println("");
+  Serial.print(F("P: "));
+  Serial.println(pressureBaseline, 2);
 
   // Step 3: Manual positioning for MAX
-  Serial.println("Step 3: Set MAX position manually");
-  Serial.println("========================================");
-  Serial.println("Controls:");
-  Serial.println("  Pin 10 ON  = Move FORWARD (extend)");
-  Serial.println("  Pin 10 OFF = Move BACKWARD (retract)");
-  Serial.println("");
-  Serial.println("To SAVE position:");
-  Serial.println("  1. Toggle Pin 4 OFF");
-  Serial.println("  2. Toggle Pin 4 ON");
-  Serial.println("========================================");
-  Serial.println("");
+  Serial.println(F("Set MAX:"));
+  Serial.println(F("Pin4 ON=CW, OFF=Stop"));
+  Serial.println(F("Pin10 ON=Save"));
 
   bool lastDeployState = false;
-  bool lastModeState = false;
-
-  // Read initial states
-  modeSwitch.readState();
-  deploySwitch.readState();
-  lastModeState = modeSwitch.isOn();
-  lastDeployState = deploySwitch.isOn();
-
   unsigned long lastPrint = 0;
 
   while (true) {
@@ -362,84 +299,50 @@ void runManualCalibration() {
     bool currentDeployState = deploySwitch.isOn();
     bool currentModeState = modeSwitch.isOn();
 
-    // Check for save trigger (mode switch OFF -> ON)
-    if (!lastModeState && currentModeState) {
+    // Check if mode switch is ON to save
+    if (currentModeState) {
       stopMotor();
-      Serial.println("");
-      Serial.println("SAVE TRIGGERED!");
+      Serial.println(F("SAVING!"));
       break;
     }
 
     // Control motor based on deploy switch
     if (currentDeployState != lastDeployState) {
       if (currentDeployState) {
-        Serial.println(">> Moving FORWARD");
+        Serial.println(F("CW"));
       } else {
-        Serial.println(">> Moving BACKWARD");
+        Serial.println(F("STOP"));
       }
     }
 
+    // Deploy switch ON = move clockwise (extend), OFF = stop
     if (currentDeployState) {
-      moveCounterClockwise(MANUAL_SPEED);
-    } else {
       moveClockwise(MANUAL_SPEED);
+    } else {
+      stopMotor();
     }
 
     // Print position periodically
     if (millis() - lastPrint > 500) {
-      Serial.print("Current position: ");
-      Serial.print(encoderCount);
-      Serial.print(" (");
-      Serial.print((float)encoderCount / COUNTS_PER_DEGREE, 1);
-      Serial.println(" degrees)");
+      Serial.print(F("Pos: "));
+      Serial.println(encoderCount);
       lastPrint = millis();
     }
 
     lastDeployState = currentDeployState;
-    lastModeState = currentModeState;
     delay(10);
   }
 
   // Step 4: Save calibration
   calibrationMax = encoderCount;
 
-  Serial.println("");
-  Serial.println("=== CALIBRATION VALUES ===");
-  Serial.print("MIN: ");
-  Serial.print(calibrationMin);
-  Serial.println(" counts");
-  Serial.print("MAX: ");
-  Serial.print(calibrationMax);
-  Serial.print(" counts (");
-  Serial.print((float)calibrationMax / COUNTS_PER_DEGREE, 1);
-  Serial.println(" degrees)");
-  Serial.print("IMU Offset: ");
-  Serial.print(imuPitchOffset, 2);
-  Serial.println("° (pitch at 0° angle of attack)");
-  Serial.print("Pressure Baseline: ");
-  Serial.print(pressureBaseline, 2);
-  Serial.println(" hPa (no airflow)");
-  Serial.println("");
+  Serial.print(F("MIN: "));
+  Serial.println(calibrationMin);
+  Serial.print(F("MAX: "));
+  Serial.println(calibrationMax);
 
-  // Save to EEPROM
   saveCalibration();
-  Serial.println("Saved to EEPROM!");
-  Serial.println("");
-
-  // Verify by reading back
-  if (loadCalibration()) {
-    Serial.println("Verification: Successfully read back from EEPROM");
-    Serial.print("  MIN: ");
-    Serial.println(calibrationMin);
-    Serial.print("  MAX: ");
-    Serial.println(calibrationMax);
-    Serial.print("  IMU Offset: ");
-    Serial.println(imuPitchOffset, 2);
-    Serial.print("  Pressure Baseline: ");
-    Serial.println(pressureBaseline, 2);
-  } else {
-    Serial.println("ERROR: Failed to verify EEPROM write!");
-  }
+  Serial.println(F("Saved!"));
 
   isCalibrated = true;
   Serial.println("");
