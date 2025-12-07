@@ -210,6 +210,34 @@ void setup() {
   delay(1000);
 }
 
+/*
+ * Print a float with fixed width (right-aligned with padding)
+ */
+void printFixedWidth(float value, int width, int decimals) {
+  char buffer[20];
+  dtostrf(value, width, decimals, buffer);
+  Serial.print(buffer);
+}
+
+/*
+ * Print a visual progress bar showing extension percentage
+ * Uses block characters for a nice visual effect
+ */
+void printProgressBar(int percent) {
+  Serial.print("[");
+  int barLength = 10;
+  int filled = (percent * barLength) / 100;
+
+  for (int i = 0; i < barLength; i++) {
+    if (i < filled) {
+      Serial.print("█");  // Full block for filled portion
+    } else {
+      Serial.print("░");  // Light shade for empty portion
+    }
+  }
+  Serial.print("]");
+}
+
 void loop() {
   if (!isCalibrated) {
     Serial.println("ERROR: Motor not calibrated!");
@@ -236,16 +264,16 @@ void loop() {
     // Map sensor readings to motor position (using pitch and airspeed)
     targetPosition = calculateAutomaticPosition(pitch, airspeed);
 
-    // Print automatic mode status
-    Serial.print("AUTO | Roll: ");
-    Serial.print(pitch, 1);
-    Serial.print("° (raw: ");
-    Serial.print(pitchRaw, 1);
-    Serial.print("°) | Airspeed: ");
-    Serial.print(airspeed, 2);
-    Serial.print(" m/s | Pressure: ");
-    Serial.print(pressure, 1);
-    Serial.print(" hPa");
+    // Print automatic mode status with fixed-width formatting
+    Serial.print("AUTO | Roll:");
+    printFixedWidth(pitch, 6, 1);
+    Serial.print("° (raw:");
+    printFixedWidth(pitchRaw, 6, 1);
+    Serial.print("°) | Speed:");
+    printFixedWidth(airspeed, 5, 2);
+    Serial.print("m/s | Press:");
+    printFixedWidth(pressure, 6, 1);
+    Serial.print("hPa");
   } else {
     // MANUAL MODE: Use deployment toggle switch
     deploySwitch.readState();
@@ -254,21 +282,26 @@ void loop() {
     // Set target: fully retracted (0) or fully extended (calibrationMax)
     targetPosition = deployed ? calibrationMax : 0;
 
-    // Print manual mode status
-    Serial.print("MANUAL | Deploy Switch: ");
-    Serial.print(deployed ? "EXTENDED" : "RETRACTED");
+    // Print manual mode status (fixed-width for alignment)
+    Serial.print("MANUAL | Deploy: ");
+    Serial.print(deployed ? "EXTENDED " : "RETRACTED");
   }
 
   // Move to target position
   moveToPosition(targetPosition);
 
-  // Print position status
-  Serial.print(" | Target: ");
-  Serial.print(targetPosition);
-  Serial.print(" | Current: ");
+  // Calculate percentage extended
+  int percentExtended = constrain(map(encoderCount, 0, calibrationMax, 0, 100), 0, 100);
+
+  // Print position status with progress bar
+  Serial.print(" | ");
+  printProgressBar(percentExtended);
+  Serial.print(" ");
+  Serial.print(percentExtended);
+  Serial.print("% | Pos: ");
   Serial.print(encoderCount);
-  Serial.print(" | Error: ");
-  Serial.println(targetPosition - encoderCount);
+  Serial.print("/");
+  Serial.println(calibrationMax);
 
   delay(50);  // Update at 20Hz
 }
@@ -448,19 +481,21 @@ long calculateAutomaticPosition(float pitch, float airspeed) {
   pitch = constrain(pitch, IMU_PITCH_MIN, IMU_PITCH_MAX);
   airspeed = constrain(airspeed, AIRSPEED_MIN, AIRSPEED_MAX);
 
-  // Map IMU pitch to position (0 to calibrationMax)
+  // Map IMU pitch to position (HIGH angle of attack → extended)
+  // -30° → 0 (retracted), +30° → MAX (extended)
   long pitchPosition = map((long)(pitch * 10),
                            (long)(IMU_PITCH_MIN * 10),
                            (long)(IMU_PITCH_MAX * 10),
-                           0,
-                           calibrationMax);
+                           calibrationMax,
+                           0);
 
-  // Map airspeed to position (0 to calibrationMax)
+  // Map airspeed to position (LOW airspeed → extended)
+  // 0 m/s → MAX (extended), 20 m/s → 0 (retracted)
   long airspeedPosition = map((long)(airspeed * 10),
                               (long)(AIRSPEED_MIN * 10),
                               (long)(AIRSPEED_MAX * 10),
-                              0,
-                              calibrationMax);
+                              calibrationMax,
+                              0);
 
   // Combine both sensors (50/50 weighting - adjust as needed)
   // You could also use just one sensor or different weighting
@@ -483,11 +518,11 @@ void moveToPosition(long targetPosition) {
 
   // Use constant speed of 45 for all movements
   if (error > 0) {
-    // Need to move counterclockwise (increase count)
-    moveCounterClockwise(CONTROL_SPEED);
-  } else {
-    // Need to move clockwise (decrease count)
+    // Need to increase position - move clockwise
     moveClockwise(CONTROL_SPEED);
+  } else {
+    // Need to decrease position - move counterclockwise
+    moveCounterClockwise(CONTROL_SPEED);
   }
 }
 
