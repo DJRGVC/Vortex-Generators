@@ -62,12 +62,14 @@ The system is controlled by **two toggle switches**:
 2. System automatically controls vortex generator deployment based on:
    - **Pitch angle** (angle of attack, 0-25°, measured via IMU roll axis)
    - **Airspeed** (0-50 m/s, calculated from pressure sensor)
-3. Deployment logic:
-   - **Baseline:** Always 50% deployed
-   - **High angle of attack + low speed → EXTEND** (approaching stall, need maximum help)
-   - **High angle of attack + high speed → BASELINE** (climbing fast, airflow sufficient)
-   - **Low angle of attack → BASELINE** (cruising, minimal deployment needed)
-   - **Formula:** Extension = 50% + (pitch/25°) × 50% × (1 - airspeed/50 m/s)
+3. Deployment logic (50/50 averaging):
+   - **High pitch → MORE deployment** (approaching stall, need vortex generator help)
+   - **Low airspeed → MORE deployment** (low energy flight, need help)
+   - **High airspeed → LESS deployment** (plenty of airflow, don't need help)
+   - **Low pitch → LESS deployment** (efficient cruise flight)
+   - **Formula:** Extension = [(pitch/25°) + (1 - airspeed/50m/s)] / 2 × 100%
+   - **Example:** 25° pitch + 0 m/s = 100% deployed (maximum help needed)
+   - **Example:** 0° pitch + 50 m/s = 0% deployed (efficient cruise, fully retracted)
 
 ### Calibration Process (Runs Automatically at Startup)
 
@@ -501,40 +503,45 @@ Problem → I2C_Scanner_Test (I2C issues?)
 - **Sensor:** IMU Roll axis (relabeled as "Pitch" in output for clarity)
 - **Range:** 0° to 25° (angle of attack relative to calibrated 0°)
 - **Calibration:** Roll offset measured at MIN position (0° AoA reference)
-- **Contribution:** 0° → +0% extension, 25° → +50% extension
+- **Contribution:** 0° → 0% extension, 25° → 100% extension
 
 ### Airspeed Mapping
 - **Calculation:** Bernoulli equation: v = √(2ΔP/ρ)
 - **Air density:** 1.225 kg/m³ (sea level, 15°C)
 - **Range:** 0-50 m/s (approximately 0-95 knots)
 - **Justification:** 50 m/s ≈ 95 knots, upper end cruising speed for Cessna 172
-- **Effect:** Reduces pitch contribution at high speeds
+- **Contribution:** 0 m/s → 100% extension (INVERTED), 50 m/s → 0% extension
 
 ### Deployment Logic
 
-**Formula:**
+**Simple 50/50 Averaging:**
 ```
-Extension % = 50% + (pitch/25°) × 50% × (1 - airspeed/50 m/s)
+Pitch Contribution = pitch / 25° × 100%
+Airspeed Contribution = (1 - airspeed / 50 m/s) × 100%
+Final Extension = (Pitch Contribution + Airspeed Contribution) / 2
 ```
 
 **Key Scenarios:**
 
-| Pitch | Airspeed | Extension | Description |
-|-------|----------|-----------|-------------|
-| 0° | 0 m/s | **50%** | Baseline deployment (stationary/hovering) |
-| 25° | 0 m/s | **100%** | Full deployment (high AoA, low speed - approaching stall) |
-| 0° | 50 m/s | **50%** | Baseline deployment (level cruise, high speed) |
-| 25° | 50 m/s | **50%** | Baseline deployment (climb at cruise speed, airspeed cancels pitch) |
-| 12.5° | 0 m/s | **75%** | Moderate deployment (medium AoA, no airspeed) |
-| 12.5° | 25 m/s | **62.5%** | Partial reduction (medium AoA, half max airspeed) |
+| Pitch | Airspeed | Pitch Contrib | Airspeed Contrib | Final Extension | Description |
+|-------|----------|---------------|------------------|-----------------|-------------|
+| 0° | 0 m/s | 0% | 100% | **50%** | Hovering/stationary (low speed needs help) |
+| 25° | 0 m/s | 100% | 100% | **100%** | Full deployment (high AoA + low speed - approaching stall) |
+| 0° | 50 m/s | 0% | 0% | **0%** | Level cruise at high speed (fully retracted) |
+| 25° | 50 m/s | 100% | 0% | **50%** | Climbing at cruise speed (pitch helps, speed doesn't) |
+| 12.5° | 25 m/s | 50% | 50% | **50%** | Moderate conditions (mid AoA, mid speed) |
+| 12.5° | 0 m/s | 50% | 100% | **75%** | Medium pitch, low speed (extended for help) |
+| 0° | 25 m/s | 0% | 50% | **25%** | Level flight, medium speed (partially retracted) |
+| 25° | 25 m/s | 100% | 50% | **75%** | High pitch, medium speed (mostly extended) |
 
 **Logic Explanation:**
-- **Baseline:** Always 50% extended (vortex generators provide some benefit at all times)
-- **Pitch contribution:** Higher angle of attack → more deployment (need help near stall)
-- **Airspeed reduction:** Higher airspeed → less deployment (already have good airflow)
-- **Combined effect:** At high pitch AND high airspeed, airflow is sufficient so vortex generators retract to baseline
-- **Best deployment (100%):** High angle of attack at low speed (takeoff, slow climb, approaching stall)
-- **Minimum deployment (50%):** Either level flight, or high speed negates the need for additional deployment
+- **50/50 weighting:** Pitch and airspeed contribute equally to deployment
+- **Pitch effect:** Higher angle of attack → more deployment (need vortex generators near stall)
+- **Airspeed effect (INVERTED):** Higher airspeed → less deployment (already have good airflow, don't need help)
+- **Combined effect:** System responds to both flight conditions simultaneously
+- **Best deployment (100%):** High angle of attack + low airspeed (takeoff, slow climb, approaching stall)
+- **Minimum deployment (0%):** Level flight at high cruise speed (plenty of airflow, no need for vortex generators)
+- **Typical deployment (50%):** Either hovering (low speed) or climbing at cruise (high pitch cancels high speed)
 
 ---
 

@@ -473,28 +473,31 @@ float calculateAirspeed(float currentPressure) {
 }
 
 /*
- * Calculate target position in automatic mode based on pitch angle and airspeed
- * Logic: Base 50% extension + pitch adds up to 50% more, reduced by airspeed
- * - (0° pitch, 0 airspeed) → 50% extended
- * - (25° pitch, 0 airspeed) → 100% extended
- * - (0° pitch, high airspeed) → 50% extended
- * - (25° pitch, high airspeed) → 50% extended
+ * Calculate target position in automatic mode based on pitch and airspeed
+ * Simple 50/50 weighting between pitch and airspeed
  */
 long calculateAutomaticPosition(float pitch, float airspeed) {
   // Constrain inputs to expected ranges
   pitch = constrain(pitch, IMU_PITCH_MIN, IMU_PITCH_MAX);
   airspeed = constrain(airspeed, AIRSPEED_MIN, AIRSPEED_MAX);
 
-  // Calculate normalized factors (0.0 to 1.0)
-  float pitchFactor = pitch / IMU_PITCH_MAX;  // 0° → 0.0, 25° → 1.0
-  float airspeedFactor = airspeed / AIRSPEED_MAX;  // 0 m/s → 0.0, 50 m/s → 1.0
+  // Map pitch to position (0° → 0, 25° → calibrationMax)
+  long pitchPosition = map((long)(pitch * 10),
+                           (long)(IMU_PITCH_MIN * 10),
+                           (long)(IMU_PITCH_MAX * 10),
+                           0,
+                           calibrationMax);
 
-  // Calculate extension percentage
-  // Base 50% + pitch contribution (0-50%) reduced by airspeed
-  float extensionPercent = 50.0 + (pitchFactor * 50.0 * (1.0 - airspeedFactor));
+  // Map airspeed to position (LOW speed → extended, HIGH speed → retracted)
+  // 0 m/s → calibrationMax, 50 m/s → 0
+  long airspeedPosition = map((long)(airspeed * 10),
+                              (long)(AIRSPEED_MIN * 10),
+                              (long)(AIRSPEED_MAX * 10),
+                              calibrationMax,
+                              0);
 
-  // Convert percentage to encoder position
-  long targetPosition = (long)((extensionPercent / 100.0) * (float)calibrationMax);
+  // 50/50 average of both contributions
+  long targetPosition = (pitchPosition + airspeedPosition) / 2;
 
   return constrain(targetPosition, 0, calibrationMax);
 }
