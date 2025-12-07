@@ -5,7 +5,7 @@ Arduino-based control system for deployable vortex generators using motor contro
 **EECS 106A - Introduction to Robotics**
 **UC Berkeley - Fall 2025**
 
-**Team Members:** Daniel Grant, Hari Ramshankar, Ethan Buttimer, Justin Lee
+**Team Members:** Daniel Grant, Justin Peck, Harihan Karthikeyan and Ethan Zuo 
 
 ## Table of Contents
 
