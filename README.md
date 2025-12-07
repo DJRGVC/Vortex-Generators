@@ -634,9 +634,9 @@ Educational project for UC Berkeley EECS 106A - Introduction to Robotics course.
 
 **Team Members:**
 - Daniel Grant
-- Hari Ramshankar
-- Ethan Buttimer
-- Justin Lee
+- Justin Peck
+- Harihan Karthikeyan
+- Ethan Zuo
 
 **Course:** EECS 106A - Introduction to Robotics
 **Institution:** University of California, Berkeley
