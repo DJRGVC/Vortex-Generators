@@ -2,9 +2,16 @@
 
 Arduino-based control system for deployable vortex generators using motor control, IMU sensing, and pressure measurement.
 
+**EECS 106A - Introduction to Robotics**
+**UC Berkeley - Fall 2025**
+
+**Team Members:** Daniel Grant, Hari Ramshankar, Ethan Buttimer, Justin Lee
+
 ## Table of Contents
 
 - [Overview](#overview)
+- [How to Control the System](#how-to-control-the-system)
+- [Understanding the Output](#understanding-the-output)
 - [Hardware Requirements](#hardware-requirements)
 - [Pin Configuration](#pin-configuration)
 - [Main Sketches](#main-sketches)
@@ -24,6 +31,141 @@ This system controls vortex generators using a geared DC motor with encoder feed
 - **Automatic mode** using IMU roll angle and airspeed (pressure) for dynamic positioning
 - **EEPROM storage** for calibration persistence
 - **Constant speed motor control** (45 PWM) for predictable movement
+
+---
+
+## How to Control the System
+
+### Physical Controls
+
+The system is controlled by **two toggle switches**:
+
+#### Pin 10 - Mode Select Switch
+- **OFF** = Manual Mode
+- **ON** = Automatic Mode
+
+#### Pin 4 - Deployment Switch (Manual Mode Only)
+- **OFF** = Vortex generators RETRACTED
+- **ON** = Vortex generators EXTENDED
+
+### Operating Modes
+
+#### Manual Mode (Pin 10 OFF)
+1. Toggle Pin 10 to **OFF**
+2. Use Pin 4 to control deployment:
+   - Pin 4 OFF → Fully retracted (0%)
+   - Pin 4 ON → Fully extended (100%)
+3. Motor moves to target position at constant speed (45 PWM)
+
+#### Automatic Mode (Pin 10 ON)
+1. Toggle Pin 10 to **ON**
+2. System automatically controls vortex generator deployment based on:
+   - **IMU Roll Angle** (angle of attack)
+   - **Airspeed** (calculated from pressure sensor)
+3. Deployment logic:
+   - **HIGH angle of attack** → EXTEND (approaching stall)
+   - **LOW airspeed** → EXTEND (need more lift)
+   - **LOW angle of attack** → RETRACT (cruising)
+   - **HIGH airspeed** → RETRACT (plenty of airflow)
+
+### Calibration Process (Runs Automatically at Startup)
+
+Every time you power on or reset the Arduino, calibration runs automatically:
+
+1. **Wait for initialization** - All sensors initialize
+2. **Motor finds MIN** - Moves counter-clockwise to limit switch
+3. **Sensors calibrate** - Reads IMU and pressure baselines
+4. **Manual positioning**:
+   - Use **Pin 4** to move motor clockwise to desired MAX position
+   - Toggle **Pin 4 ON** = motor moves, **Pin 4 OFF** = motor stops
+5. **Save calibration**:
+   - Toggle **Pin 10 ON** to save MAX position to EEPROM
+   - System enters normal operation mode
+
+---
+
+## Understanding the Output
+
+The system outputs real-time status to the Serial Monitor at 115200 baud, updating at 20Hz (every 50ms).
+
+### Automatic Mode Output
+
+```
+AUTO | Roll:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [█████░░░░░] 56% | Pos: 146/259
+```
+
+**Field Breakdown:**
+- `AUTO` - Currently in automatic mode
+- `Roll: 14.3°` - Calibrated roll angle (angle of attack relative to 0°)
+- `(raw: 9.4°)` - Raw IMU roll reading before calibration offset
+- `Speed: 0.00m/s` - Calculated airspeed from pressure sensor
+- `Press: 1012.6hPa` - Current atmospheric pressure reading
+- `[█████░░░░░]` - Visual progress bar (56% extended)
+- `56%` - Percentage extended
+- `Pos: 146/259` - Current encoder position / Maximum position
+
+### Manual Mode Output
+
+```
+MANUAL | Deploy: EXTENDED  | [██████████] 100% | Pos: 2160/2160
+MANUAL | Deploy: RETRACTED | [░░░░░░░░░░] 0% | Pos: 0/2160
+```
+
+**Field Breakdown:**
+- `MANUAL` - Currently in manual mode
+- `Deploy: EXTENDED` or `Deploy: RETRACTED` - Pin 4 switch state
+- `[██████████]` or `[░░░░░░░░░░]` - Visual progress bar
+- `100%` or `0%` - Percentage extended
+- `Pos: 2160/2160` - Current position / Maximum position
+
+### Progress Bar Explained
+
+The progress bar uses Unicode block characters for a visual representation:
+- `█` (full block) = Extended portion
+- `░` (light shade) = Retracted portion
+
+Examples:
+```
+[░░░░░░░░░░] 0%   - Fully retracted
+[██░░░░░░░░] 20%  - 20% extended
+[█████░░░░░] 50%  - Half extended
+[███████░░░] 70%  - 70% extended
+[██████████] 100% - Fully extended
+```
+
+### Sample Real-World Output
+
+**During takeoff (low speed, increasing angle of attack):**
+```
+14:33:46.316 -> AUTO | Roll:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [█████░░░░░] 56% | Pos: 146/259
+14:33:46.383 -> AUTO | Roll:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [█████░░░░░] 56% | Pos: 146/259
+14:33:46.449 -> AUTO | Roll:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [█████░░░░░] 56% | Pos: 146/259
+```
+*Vortex generators are 56% extended due to high angle of attack (14.3°) and low airspeed (0 m/s)*
+
+**During cruise (low angle of attack, higher speed):**
+```
+AUTO | Roll:   2.1° (raw:  -2.8°) | Speed:15.34m/s | Press:1008.2hPa | [██░░░░░░░░] 15% | Pos: 39/259
+```
+*Vortex generators are only 15% extended - retracted during efficient cruise*
+
+**Manual control - fully extended:**
+```
+MANUAL | Deploy: EXTENDED  | [██████████] 100% | Pos: 259/259
+```
+
+**Manual control - fully retracted:**
+```
+MANUAL | Deploy: RETRACTED | [░░░░░░░░░░] 0% | Pos: 0/259
+```
+
+### Serial Monitor Settings
+
+To view the output:
+1. Open Arduino IDE
+2. Tools → Serial Monitor (or Ctrl+Shift+M)
+3. Set baud rate to **115200**
+4. Output updates every 50ms (20Hz)
 
 ---
 
@@ -441,10 +583,18 @@ Search and install:
 
 ## License
 
-Educational project for UC Berkeley Introduction to Robotics (EECS 206A) course.
+Educational project for UC Berkeley EECS 106A - Introduction to Robotics course.
 
 ---
 
-## Author
+## Authors
 
-Daniel Grant - Fall 2025
+**Team Members:**
+- Daniel Grant
+- Hari Ramshankar
+- Ethan Buttimer
+- Justin Lee
+
+**Course:** EECS 106A - Introduction to Robotics
+**Institution:** University of California, Berkeley
+**Semester:** Fall 2025
