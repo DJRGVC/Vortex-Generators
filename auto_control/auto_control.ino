@@ -141,17 +141,17 @@
 volatile long encoderCount = 0;
 long calibrationMin = 0;  // Minimum position (at limit switch)
 long calibrationMax = 0;  // Maximum position (user-defined)
-float imuPitchOffset = 0.0;  // IMU roll at 0° angle of attack
+float imuPitchOffset = 0.0;  // IMU pitch at 0° angle of attack
 float pressureBaseline = 0.0;  // Baseline pressure (no airflow) in hPa
 bool isCalibrated = false;
 
-// IMU roll mapping for automatic mode (relative to calibrated 0°)
-#define IMU_PITCH_MIN -30.0   // Angle of attack that maps to motor position 0° (fully retracted)
-#define IMU_PITCH_MAX 30.0    // Angle of attack that maps to motor position MAX (fully extended)
+// IMU pitch mapping for automatic mode (relative to calibrated 0°)
+#define IMU_PITCH_MIN 0.0     // Angle of attack that maps to motor position 0° (fully retracted)
+#define IMU_PITCH_MAX 25.0    // Angle of attack that maps to motor position MAX (fully extended)
 
 // Airspeed mapping for automatic mode (based on pressure difference from baseline)
 #define AIRSPEED_MIN 0.0      // Airspeed (m/s) that maps to motor position 0° (fully retracted)
-#define AIRSPEED_MAX 20.0     // Airspeed (m/s) that maps to motor position MAX (fully extended)
+#define AIRSPEED_MAX 50.0     // Airspeed (m/s) that maps to motor position MAX (fully extended)
 
 // Create sensor objects
 IMU_Sensor imuSensor;
@@ -256,7 +256,7 @@ void loop() {
     imuSensor.readData();
     pressureSensor.readData();
 
-    float pitchRaw = imuSensor.getRoll();
+    float pitchRaw = -imuSensor.getRoll();  // Actually roll, but represents pitch (negate for correct sign)
     float pitch = pitchRaw - imuPitchOffset;  // Apply calibration offset
     float pressure = pressureSensor.getPressure_hPa();
     float airspeed = calculateAirspeed(pressure);  // Calculate airspeed
@@ -265,7 +265,7 @@ void loop() {
     targetPosition = calculateAutomaticPosition(pitch, airspeed);
 
     // Print automatic mode status with fixed-width formatting
-    Serial.print("AUTO | Roll:");
+    Serial.print("AUTO | Pitch:");
     printFixedWidth(pitch, 6, 1);
     Serial.print("° (raw:");
     printFixedWidth(pitchRaw, 6, 1);
@@ -356,7 +356,7 @@ void runManualCalibration() {
   calibrationMin = 0;
   Serial.println(F("MIN = 0"));
 
-  // Step 2.5: Read IMU roll at this position (0° angle of attack)
+  // Step 2.5: Read IMU roll at this position (0° angle of attack reference)
   Serial.println(F("Reading IMU..."));
   delay(500);
 
@@ -364,7 +364,7 @@ void runManualCalibration() {
   int numReadings = 5;  // Reduced to save memory
   for (int i = 0; i < numReadings; i++) {
     imuSensor.readData();
-    pitchSum += imuSensor.getRoll();
+    pitchSum += -imuSensor.getRoll();  // Read roll (negate for correct sign convention)
     delay(100);
   }
   imuPitchOffset = pitchSum / numReadings;
@@ -473,33 +473,28 @@ float calculateAirspeed(float currentPressure) {
 }
 
 /*
- * Calculate target position in automatic mode based on IMU roll and airspeed
- * You can adjust the weighting between IMU and airspeed as needed
+ * Calculate target position in automatic mode based on pitch angle and airspeed
+ * Logic: Base 50% extension + pitch adds up to 50% more, reduced by airspeed
+ * - (0° pitch, 0 airspeed) → 50% extended
+ * - (25° pitch, 0 airspeed) → 100% extended
+ * - (0° pitch, high airspeed) → 50% extended
+ * - (25° pitch, high airspeed) → 50% extended
  */
 long calculateAutomaticPosition(float pitch, float airspeed) {
   // Constrain inputs to expected ranges
   pitch = constrain(pitch, IMU_PITCH_MIN, IMU_PITCH_MAX);
   airspeed = constrain(airspeed, AIRSPEED_MIN, AIRSPEED_MAX);
 
-  // Map IMU pitch to position (HIGH angle of attack → extended)
-  // -30° → 0 (retracted), +30° → MAX (extended)
-  long pitchPosition = map((long)(pitch * 10),
-                           (long)(IMU_PITCH_MIN * 10),
-                           (long)(IMU_PITCH_MAX * 10),
-                           calibrationMax,
-                           0);
+  // Calculate normalized factors (0.0 to 1.0)
+  float pitchFactor = pitch / IMU_PITCH_MAX;  // 0° → 0.0, 25° → 1.0
+  float airspeedFactor = airspeed / AIRSPEED_MAX;  // 0 m/s → 0.0, 50 m/s → 1.0
 
-  // Map airspeed to position (LOW airspeed → extended)
-  // 0 m/s → MAX (extended), 20 m/s → 0 (retracted)
-  long airspeedPosition = map((long)(airspeed * 10),
-                              (long)(AIRSPEED_MIN * 10),
-                              (long)(AIRSPEED_MAX * 10),
-                              calibrationMax,
-                              0);
+  // Calculate extension percentage
+  // Base 50% + pitch contribution (0-50%) reduced by airspeed
+  float extensionPercent = 50.0 + (pitchFactor * 50.0 * (1.0 - airspeedFactor));
 
-  // Combine both sensors (50/50 weighting - adjust as needed)
-  // You could also use just one sensor or different weighting
-  long targetPosition = (pitchPosition + airspeedPosition) / 2;
+  // Convert percentage to encoder position
+  long targetPosition = (long)((extensionPercent / 100.0) * (float)calibrationMax);
 
   return constrain(targetPosition, 0, calibrationMax);
 }

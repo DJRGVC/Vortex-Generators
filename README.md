@@ -60,13 +60,14 @@ The system is controlled by **two toggle switches**:
 #### Automatic Mode (Pin 10 ON)
 1. Toggle Pin 10 to **ON**
 2. System automatically controls vortex generator deployment based on:
-   - **IMU Roll Angle** (angle of attack)
-   - **Airspeed** (calculated from pressure sensor)
+   - **Pitch angle** (angle of attack, 0-25°, measured via IMU roll axis)
+   - **Airspeed** (0-50 m/s, calculated from pressure sensor)
 3. Deployment logic:
-   - **HIGH angle of attack** → EXTEND (approaching stall)
-   - **LOW airspeed** → EXTEND (need more lift)
-   - **LOW angle of attack** → RETRACT (cruising)
-   - **HIGH airspeed** → RETRACT (plenty of airflow)
+   - **Baseline:** Always 50% deployed
+   - **High angle of attack + low speed → EXTEND** (approaching stall, need maximum help)
+   - **High angle of attack + high speed → BASELINE** (climbing fast, airflow sufficient)
+   - **Low angle of attack → BASELINE** (cruising, minimal deployment needed)
+   - **Formula:** Extension = 50% + (pitch/25°) × 50% × (1 - airspeed/50 m/s)
 
 ### Calibration Process (Runs Automatically at Startup)
 
@@ -135,19 +136,31 @@ Examples:
 
 ### Sample Real-World Output
 
-**During takeoff (low speed, increasing angle of attack):**
+**During takeoff/slow flight (low speed, moderate angle of attack):**
 ```
-14:33:46.316 -> AUTO | Roll:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [█████░░░░░] 56% | Pos: 146/259
-14:33:46.383 -> AUTO | Roll:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [█████░░░░░] 56% | Pos: 146/259
-14:33:46.449 -> AUTO | Roll:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [█████░░░░░] 56% | Pos: 146/259
+14:33:46.316 -> AUTO | Pitch:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [███████░░░] 78% | Pos: 203/259
+14:33:46.383 -> AUTO | Pitch:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [███████░░░] 78% | Pos: 203/259
+14:33:46.449 -> AUTO | Pitch:  14.3° (raw:   9.4°) | Speed: 0.00m/s | Press:1012.6hPa | [███████░░░] 78% | Pos: 203/259
 ```
-*Vortex generators are 56% extended due to high angle of attack (14.3°) and low airspeed (0 m/s)*
+*Vortex generators are 78% extended: 50% baseline + 28% from pitch (14.3°) with no airspeed reduction*
 
-**During cruise (low angle of attack, higher speed):**
+**During cruise (low angle of attack, moderate speed):**
 ```
-AUTO | Roll:   2.1° (raw:  -2.8°) | Speed:15.34m/s | Press:1008.2hPa | [██░░░░░░░░] 15% | Pos: 39/259
+AUTO | Pitch:   2.1° (raw:  -2.8°) | Speed:30.50m/s | Press:1008.2hPa | [█████░░░░░] 52% | Pos: 135/259
 ```
-*Vortex generators are only 15% extended - retracted during efficient cruise*
+*Vortex generators near baseline (52%): low pitch contributes minimal extension, partially reduced by airspeed*
+
+**Approaching stall (high angle of attack, low speed):**
+```
+AUTO | Pitch:  24.8° (raw:  19.9°) | Speed: 5.20m/s | Press:1011.8hPa | [█████████░] 94% | Pos: 244/259
+```
+*Near-maximum deployment: high pitch + low airspeed = maximum vortex generator help needed*
+
+**Fast climb (high angle of attack, high speed):**
+```
+AUTO | Pitch:  22.5° (raw:  17.6°) | Speed:45.30m/s | Press: 995.1hPa | [█████░░░░░] 54% | Pos: 140/259
+```
+*Near baseline: high airspeed (45 m/s) cancels out most of the pitch contribution*
 
 **Manual control - fully extended:**
 ```
@@ -484,21 +497,44 @@ Problem → I2C_Scanner_Test (I2C issues?)
 
 ## Automatic Mode Details
 
-### IMU Mapping
-- **Range:** -30° to +30° (angle of attack relative to calibrated 0°)
-- **Calibration:** Roll offset measured at MIN position
-- **Motor mapping:** -30° → 0 counts, +30° → MAX counts
+### Pitch (Angle of Attack) Mapping
+- **Sensor:** IMU Roll axis (relabeled as "Pitch" in output for clarity)
+- **Range:** 0° to 25° (angle of attack relative to calibrated 0°)
+- **Calibration:** Roll offset measured at MIN position (0° AoA reference)
+- **Contribution:** 0° → +0% extension, 25° → +50% extension
 
 ### Airspeed Mapping
 - **Calculation:** Bernoulli equation: v = √(2ΔP/ρ)
 - **Air density:** 1.225 kg/m³ (sea level, 15°C)
-- **Range:** 0-20 m/s
-- **Motor mapping:** 0 m/s → 0 counts, 20 m/s → MAX counts
+- **Range:** 0-50 m/s (approximately 0-95 knots)
+- **Justification:** 50 m/s ≈ 95 knots, upper end cruising speed for Cessna 172
+- **Effect:** Reduces pitch contribution at high speeds
 
-### Combined Control
-- 50/50 weighting between IMU and airspeed
-- Target position = (IMU position + airspeed position) / 2
-- Adjust weighting in `calculateAutomaticPosition()` as needed
+### Deployment Logic
+
+**Formula:**
+```
+Extension % = 50% + (pitch/25°) × 50% × (1 - airspeed/50 m/s)
+```
+
+**Key Scenarios:**
+
+| Pitch | Airspeed | Extension | Description |
+|-------|----------|-----------|-------------|
+| 0° | 0 m/s | **50%** | Baseline deployment (stationary/hovering) |
+| 25° | 0 m/s | **100%** | Full deployment (high AoA, low speed - approaching stall) |
+| 0° | 50 m/s | **50%** | Baseline deployment (level cruise, high speed) |
+| 25° | 50 m/s | **50%** | Baseline deployment (climb at cruise speed, airspeed cancels pitch) |
+| 12.5° | 0 m/s | **75%** | Moderate deployment (medium AoA, no airspeed) |
+| 12.5° | 25 m/s | **62.5%** | Partial reduction (medium AoA, half max airspeed) |
+
+**Logic Explanation:**
+- **Baseline:** Always 50% extended (vortex generators provide some benefit at all times)
+- **Pitch contribution:** Higher angle of attack → more deployment (need help near stall)
+- **Airspeed reduction:** Higher airspeed → less deployment (already have good airflow)
+- **Combined effect:** At high pitch AND high airspeed, airflow is sufficient so vortex generators retract to baseline
+- **Best deployment (100%):** High angle of attack at low speed (takeoff, slow climb, approaching stall)
+- **Minimum deployment (50%):** Either level flight, or high speed negates the need for additional deployment
 
 ---
 
