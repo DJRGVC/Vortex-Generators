@@ -1,0 +1,84 @@
+{
+  "calibration": {
+    "slope": -0.001857438181818182,
+    "intercept": -1.5985105454545454,
+    "r_squared": 0.9999070195463258,
+    "std_error": 5.970478459850043e-06
+  },
+  "baseline_weight_g": 520.515548786158,
+  "runs": [
+    {
+      "run_number": 1,
+      "rpm": 0.0,
+      "windspeed_mph": 0.0,
+      "voltage_v": -2.565336,
+      "apparent_weight_g": 520.515548786158,
+      "lift_g": 0.0
+    },
+    {
+      "run_number": 2,
+      "rpm": 796.279345,
+      "windspeed_mph": 15.562092677889448,
+      "voltage_v": -2.544821,
+      "apparent_weight_g": 509.47076667668387,
+      "lift_g": 11.044782109474113
+    },
+    {
+      "run_number": 3,
+      "rpm": 1201.638718,
+      "windspeed_mph": 25.35902918,
+      "voltage_v": -2.469893,
+      "apparent_weight_g": 469.131335338702,
+      "lift_g": 51.38421344745598
+    },
+    {
+      "run_number": 4,
+      "rpm": 1602.929945,
+      "windspeed_mph": 34.57801810561097,
+      "voltage_v": -2.363719,
+      "apparent_weight_g": 411.96980983583455,
+      "lift_g": 108.54573895032343
+    },
+    {
+      "run_number": 5,
+      "rpm": 2009.030266,
+      "windspeed_mph": 46.361412044170855,
+      "voltage_v": -2.213677,
+      "apparent_weight_g": 331.1908092377479,
+      "lift_g": 189.3247395484101
+    },
+    {
+      "run_number": 6,
+      "rpm": 2410.713286,
+      "windspeed_mph": 57.89065356847546,
+      "voltage_v": -2.035251,
+      "apparent_weight_g": 235.13054637325513,
+      "lift_g": 285.38500241290285
+    },
+    {
+      "run_number": 7,
+      "rpm": 2797.795089,
+      "windspeed_mph": 65.76,
+      "voltage_v": -1.851951,
+      "apparent_weight_g": 136.44623924838803,
+      "lift_g": 384.06930953777
+    }
+  ],
+  "fits": {
+    "quadratic": {
+      "coefficients": [
+        0.09024684655286665,
+        -0.10821535025678193,
+        -2.593667591331198
+      ],
+      "r_squared": 0.9985274599856905
+    },
+    "linear": {
+      "coefficients": [
+        5.968303295834868,
+        -62.2187930568817
+      ],
+      "r_squared": 0.9180205746746012
+    }
+  }
+}

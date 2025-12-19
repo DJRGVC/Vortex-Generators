@@ -1,0 +1,23 @@
+LabVIEW Measurement	
+Writer_Version	2
+Reader_Version	2
+Separator	Tab
+Decimal_Separator	.
+Multi_Headings	No
+X_Columns	One
+Time_Pref	Absolute
+Operator	ME
+Date	2025/12/12
+Time	14:16:27.4228038787841796875
+***End_of_Header***	
+	
+Channels	6						
+Samples	1	1	1	1	1	1	
+Date	2025/12/12	2025/12/12	2025/12/12	2025/12/12	2025/12/12	2025/12/12	
+Time	14:45:21.4168038368225097656	14:45:21.4168038368225097656	14:45:21.4168038368225097656	14:45:21.4108037948608398438	14:45:21.4108037948608398438	14:45:21.4168038368225097656	
+X_Dimension	Time	Time	Time	Time	Time	Time	
+X0	0.0000000000000000E+0	0.0000000000000000E+0	0.0000000000000000E+0	0.0000000000000000E+0	0.0000000000000000E+0	0.0000000000000000E+0	
+Delta_X	1.000000	1.000000	1.000000	1.000000	1.000000	1.000000	
+***End_of_Header***							
+X_Value	Untitled	Untitled 1	Untitled 2	Untitled 3	Untitled 4	Untitled 5	Comment
+0.000000	2409.583511	1.958613	0.021079	1.425332	0.089993	1.725487	, Columns A-M:, Time, Fan Speed [RPM], PTX1 Cont. Cone [V], PT STD Dev, Strain Gage [V], Strain gage STD Dev, Pitot Tube OS PTX2 (mmHg), Comments

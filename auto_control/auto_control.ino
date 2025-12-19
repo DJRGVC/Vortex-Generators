@@ -127,8 +127,8 @@
 #define EEPROM_MAGIC_NUMBER 0xCAFEBABE  // Magic number to verify EEPROM data
 
 // Motor control constants
-#define CALIBRATION_SPEED 45      // PWM speed during calibration (0-255)
-#define CONTROL_SPEED 45          // PWM speed during normal operation (0-255)
+#define CALIBRATION_SPEED 60      // PWM speed during calibration (0-255)
+#define CONTROL_SPEED 60          // PWM speed during normal operation (0-255)
 #define CALIBRATION_DEGREES 65.0  // Degrees to rotate back from limit
 
 // Encoder constants

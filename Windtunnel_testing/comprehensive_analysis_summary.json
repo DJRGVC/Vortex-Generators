@@ -1,0 +1,56 @@
+{
+  "retracted_0deg": {
+    "angle_deg": 0,
+    "vg_state": "retracted",
+    "baseline_weight_g": 542.3893376413571,
+    "max_windspeed_mph": 65.76,
+    "max_lift_g": 222.20355411954762,
+    "max_drag_g": 8.888142164781906,
+    "num_points": 7
+  },
+  "deployed_0deg": {
+    "angle_deg": 0,
+    "vg_state": "deployed",
+    "baseline_weight_g": 554.7522886375875,
+    "max_windspeed_mph": 65.76,
+    "max_lift_g": 205.79536887452883,
+    "max_drag_g": 8.231814754981153,
+    "num_points": 7
+  },
+  "retracted_10deg": {
+    "angle_deg": 10,
+    "vg_state": "retracted",
+    "baseline_weight_g": 520.161012385568,
+    "max_windspeed_mph": 65.76,
+    "max_lift_g": 2047.177917228147,
+    "max_drag_g": 163.77423337825175,
+    "num_points": 7
+  },
+  "deployed_10deg": {
+    "angle_deg": 10,
+    "vg_state": "deployed",
+    "baseline_weight_g": 403.384491114701,
+    "max_windspeed_mph": 65.76,
+    "max_lift_g": 2307.4659862160775,
+    "max_drag_g": 184.5972788972862,
+    "num_points": 7
+  },
+  "retracted_20deg": {
+    "angle_deg": 20,
+    "vg_state": "retracted",
+    "baseline_weight_g": 105.90737749057615,
+    "max_windspeed_mph": 65.76,
+    "max_lift_g": 2731.3257872391746,
+    "max_drag_g": 409.6988680858762,
+    "num_points": 7
+  },
+  "deployed_20deg": {
+    "angle_deg": 20,
+    "vg_state": "deployed",
+    "baseline_weight_g": 1.636510500807762,
+    "max_windspeed_mph": 34.600407421745636,
+    "max_lift_g": 419.30438467541524,
+    "max_drag_g": 62.89565770131228,
+    "num_points": 3
+  }
+}
