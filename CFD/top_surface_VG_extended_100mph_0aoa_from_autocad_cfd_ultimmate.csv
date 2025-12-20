@@ -1,0 +1,52 @@
+Scenario 1
+
+BOUNDARY ID, 186
+----------------
+ Area, 614.271, cm^2
+ sum FX, 211.417, dyne
+ sum FY, 443672, dyne
+ sum FZ, 1.13386e+06, dyne
+ Center of Force about X-Axis (Y-Z), 7.41316, 1.07693, cm
+ Center of Force about Y-Axis (X-Z), -0.0466095, 0.558855, cm
+ Center of Force about Z-Axis (X-Y), 0.0812063, 7.26917, cm
+
+BOUNDARY ID, 185
+----------------
+ Area, 47.0033, cm^2
+ sum FX, 104341, dyne
+ sum FY, 2701.48, dyne
+ sum FZ, -38.8719, dyne
+ Center of Force about X-Axis (Y-Z), 0.669999, 0.397496, cm
+ Center of Force about Y-Axis (X-Z), 12.5413, 0.378426, cm
+ Center of Force about Z-Axis (X-Y), 12.5413, 5.72828, cm
+
+BOUNDARY ID, 184
+----------------
+ Area, 610.687, cm^2
+ sum FX, -42.3204, dyne
+ sum FY, 157448, dyne
+ sum FZ, -1.538e+06, dyne
+ Center of Force about X-Axis (Y-Z), 4.81434, -0.507399, cm
+ Center of Force about Y-Axis (X-Z), 0.139584, -0.186699, cm
+ Center of Force about Z-Axis (X-Y), -0.046572, 1.36211, cm
+
+BOUNDARY ID, 183
+----------------
+ Area, 47.0034, cm^2
+ sum FX, -103056, dyne
+ sum FY, 2745.64, dyne
+ sum FZ, -94.3205, dyne
+ Center of Force about X-Axis (Y-Z), 0.762906, 0.39781, cm
+ Center of Force about Y-Axis (X-Z), -12.5413, 0.385823, cm
+ Center of Force about Z-Axis (X-Y), -12.5413, 2.48555, cm
+
+
+Summary
+-------------------
+Total area, 1318.96, cm^2
+TOTAL FX, 1454.44, dyne
+TOTAL FY, 606567, dyne
+TOTAL FZ, -404269, dyne
+Center of Force about X-Axis (Y-Z), -5.05346, 0.500366, cm
+Center of Force about Y-Axis (X-Z), 0.00122678, 0.363743, cm
+Center of Force about Z-Axis (X-Y), -0.40666, -15.2049, cm
